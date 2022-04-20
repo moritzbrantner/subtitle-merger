@@ -80,13 +80,8 @@ def add_subtitles(scale, primary_input, secondary_input, output, encoding):
 
     # write the file
     if output is None:
-
         output = generate_output_name(primary_input, secondary_input)
-        # the substring, that the two input files have in common
-        common_string = find_common_beginning(primary_input, secondary_input)
-        primary_language = primary_input[common_string:].split('.')[0]
-        secondary_language = secondary_input[common_string:].split('.')[0]
-        output = primary_input[:common_string] + primary_language + '+' + secondary_language + '.ass'
+        
     with open(output, 'w', encoding='utf_8_sig') as f:
         primary_source.events = output_events
         primary_source.dump_file(f)
