@@ -1,110 +1,242 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  TimelineWorkbench,
+  createTimelineEditorHistory,
+  createTimelineMediaSourceLibrary,
+  type TimelineEditorClipboard,
+  type TimelineEditorDocument,
+  type TimelineEditorHistory,
+  type TimelineEditorSelection,
+  type TimelineEditorViewport,
+  type TimelineMediaSourceCleanup,
+  type TimelineMediaSourceLibrary,
+  type TimelineWorkbenchImportResult,
+  type TimelineWorkbenchImportSource,
+  type TimelineWorkbenchAsset,
+} from '@moritzbrantner/timeline-editor'
+import {
+  createTimelineVideoExtension,
+  createTimelineVideoFileAsset,
+  type TimelineVideoItemData,
+} from '@moritzbrantner/timeline-editor/video'
 import './App.css'
 
-type HealthState =
-  | { status: 'checking' }
-  | {
-      status: 'online'
-      service: string
-      version: string
-    }
-  | {
-      status: 'offline'
-      message: string
-    }
+type EditorDocument = TimelineEditorDocument<Record<string, unknown>, TimelineVideoItemData>
+type EditorAsset = TimelineWorkbenchAsset<TimelineVideoItemData>
+type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineVideoItemData>
 
-async function fetchHealth(): Promise<HealthState> {
-  try {
-    const response = await fetch('/api/health')
+const videoTrackId = 'primary-video'
 
-    if (!response.ok) {
-      return {
-        status: 'offline',
-        message: `Backend returned ${response.status}`,
-      }
-    }
+function createEditorHistory(): EditorHistory {
+  return createTimelineEditorHistory() as EditorHistory
+}
 
-    const payload = (await response.json()) as {
-      service?: unknown
-      status?: unknown
-      version?: unknown
-    }
+function createEmptyDocument(): EditorDocument {
+  return {
+    durationMs: 30_000,
+    currentTimeMs: 0,
+    tracks: [
+      {
+        id: videoTrackId,
+        label: 'Video',
+        kind: 'video',
+        acceptsItemKinds: ['video'],
+        height: 124,
+        items: [],
+      },
+    ],
+  }
+}
 
-    if (
-      payload.status !== 'ok' ||
-      typeof payload.service !== 'string' ||
-      typeof payload.version !== 'string'
-    ) {
-      return {
-        status: 'offline',
-        message: 'Backend returned an unexpected health response',
-      }
-    }
+function createDocumentForVideoAsset(asset: EditorAsset): EditorDocument {
+  const itemId = `${asset.id}-clip`
 
-    return {
-      status: 'online',
-      service: payload.service,
-      version: payload.version,
-    }
-  } catch (error) {
-    return {
-      status: 'offline',
-      message: error instanceof Error ? error.message : 'Backend is unreachable',
-    }
+  return {
+    durationMs: Math.max(asset.durationMs, 1_000),
+    currentTimeMs: 0,
+    tracks: [
+      {
+        id: videoTrackId,
+        label: 'Video',
+        kind: 'video',
+        acceptsItemKinds: ['video'],
+        height: 124,
+        items: [
+          {
+            id: itemId,
+            trackId: videoTrackId,
+            label: asset.label,
+            startMs: 0,
+            durationMs: asset.durationMs,
+            kind: asset.kind,
+            color: asset.color,
+            data: asset.data,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function disposeCleanups(cleanups: TimelineMediaSourceCleanup[]) {
+  for (const cleanup of cleanups) {
+    cleanup()
   }
 }
 
 function App() {
-  const [health, setHealth] = useState<HealthState>({ status: 'checking' })
+  const sourceLibrary = useMemo<TimelineMediaSourceLibrary>(
+    () => createTimelineMediaSourceLibrary(),
+    [],
+  )
+  const importAssets = useMemo(
+    () =>
+      async (
+        sources: TimelineWorkbenchImportSource[],
+      ): Promise<TimelineWorkbenchImportResult<TimelineVideoItemData>[]> =>
+        Promise.all(
+          sources.map(async (source) => {
+            const file = source.file
 
-  async function refreshHealth() {
-    setHealth({ status: 'checking' })
-    setHealth(await fetchHealth())
-  }
+            if (
+              source.type !== 'file' ||
+              !file ||
+              (source.mediaType !== 'video' &&
+                source.kind !== 'video' &&
+                !file.type.startsWith('video/'))
+            ) {
+              return {
+                errors: [`${source.label ?? file?.name ?? 'Source'} is not a video file.`],
+              }
+            }
+
+            try {
+              const result = await createTimelineVideoFileAsset(file, {
+                sourceLibrary,
+                label: source.label,
+                durationMs: source.durationMs,
+                thumbnailCount: 8,
+                fit: 'contain',
+              })
+
+              return {
+                asset: result.asset,
+                cleanup: result.cleanup,
+              }
+            } catch (error) {
+              return {
+                errors: [
+                  error instanceof Error ? error.message : `Could not import ${file.name}.`,
+                ],
+              }
+            }
+          }),
+        ),
+    [sourceLibrary],
+  )
+  const videoExtension = useMemo(() => createTimelineVideoExtension(), [])
+
+  const [document, setDocument] = useState<EditorDocument>(() => createEmptyDocument())
+  const [selection, setSelection] = useState<TimelineEditorSelection>({
+    itemIds: [],
+    trackIds: [videoTrackId],
+  })
+  const [viewport, setViewport] = useState<TimelineEditorViewport>({
+    pixelsPerSecond: 80,
+  })
+  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineVideoItemData>>()
+  const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
+  const [assets, setAssets] = useState<EditorAsset[]>([])
+  const [loadError, setLoadError] = useState<string>()
+  const loadedVideoCleanupsRef = useRef<TimelineMediaSourceCleanup[]>([])
 
   useEffect(() => {
-    void refreshHealth()
-  }, [])
+    return () => {
+      disposeCleanups(loadedVideoCleanupsRef.current)
+      loadedVideoCleanupsRef.current = []
+      sourceLibrary.dispose()
+    }
+  }, [sourceLibrary])
+
+  async function loadVideo(file: File) {
+    setLoadError(undefined)
+
+    try {
+      const result = await createTimelineVideoFileAsset(file, {
+        sourceLibrary,
+        thumbnailCount: 12,
+        fit: 'contain',
+      })
+
+      disposeCleanups(loadedVideoCleanupsRef.current)
+      loadedVideoCleanupsRef.current = result.cleanup ? [result.cleanup] : []
+
+      const nextDocument = createDocumentForVideoAsset(result.asset)
+      const loadedItem = nextDocument.tracks[0]?.items[0]
+
+      setAssets([result.asset])
+      setDocument(nextDocument)
+      setSelection({
+        itemIds: loadedItem ? [loadedItem.id] : [],
+        anchorItemId: loadedItem?.id,
+        trackIds: [videoTrackId],
+      })
+      setViewport({ pixelsPerSecond: 80 })
+      setHistory(createEditorHistory())
+      setClipboard(undefined)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not load this video.')
+    }
+  }
 
   return (
-    <main className="app-shell">
-      <section className="workspace">
-        <div className="status-panel" aria-live="polite">
-          <span className={`status-light status-light--${health.status}`} />
-          <div>
-            <p className="eyebrow">Backend</p>
-            <h1>
-              {health.status === 'online'
-                ? 'Rust API connected'
-                : health.status === 'checking'
-                  ? 'Checking Rust API'
-                  : 'Rust API offline'}
-            </h1>
-            <p className="status-copy">
-              {health.status === 'online'
-                ? `${health.service} ${health.version} is responding through the Vite proxy.`
-                : health.status === 'checking'
-                  ? 'Waiting for /api/health to respond.'
-                  : health.message}
-            </p>
-          </div>
-          <button type="button" onClick={() => void refreshHealth()}>
-            Refresh
-          </button>
+    <main className="editor-shell">
+      <header className="editor-topbar">
+        <div className="editor-title">
+          <p className="eyebrow">Subtitle Merger</p>
+          <h1>Timeline Editor</h1>
         </div>
 
-        <div className="stack-grid" aria-label="Project stack">
-          <section>
-            <p className="eyebrow">Backend</p>
-            <h2>Rust + Axum</h2>
-            <p>HTTP API service with a typed health endpoint and Cargo checks.</p>
-          </section>
-          <section>
-            <p className="eyebrow">Frontend</p>
-            <h2>React + TypeScript</h2>
-            <p>Vite app with strict TypeScript, workspace scripts, and API proxying.</p>
-          </section>
+        <label className="video-loader">
+          <input
+            type="file"
+            accept="video/*"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+
+              if (file) {
+                void loadVideo(file)
+              }
+            }}
+          />
+          Load video
+        </label>
+      </header>
+
+      {loadError ? (
+        <div className="load-error" role="alert">
+          {loadError}
         </div>
+      ) : null}
+
+      <section className="editor-workbench" aria-label="Video timeline editor">
+        <TimelineWorkbench
+          document={document}
+          selection={selection}
+          viewport={viewport}
+          clipboard={clipboard}
+          history={history}
+          assets={assets}
+          extensions={[videoExtension]}
+          acceptedImportTypes={['video/*']}
+          onImportAssets={importAssets}
+          onDocumentChange={setDocument}
+          onSelectionChange={setSelection}
+          onViewportChange={setViewport}
+          onClipboardChange={setClipboard}
+          onHistoryChange={setHistory}
+        />
       </section>
     </main>
   )
