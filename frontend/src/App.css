@@ -1,7 +1,7 @@
 .editor-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
   padding: 16px;
   background: #101114;
@@ -21,6 +21,7 @@
 }
 
 .editor-title {
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -39,8 +40,57 @@ h1 {
   line-height: 1.2;
 }
 
+.path-loader {
+  display: grid;
+  flex: 1 1 520px;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  min-width: 280px;
+}
+
+.path-loader input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: #0f1217;
+  color: #f5f7fa;
+  font: inherit;
+}
+
+.path-loader input:focus {
+  border-color: #56a3ff;
+  outline: 3px solid rgba(86, 163, 255, 0.28);
+  outline-offset: 1px;
+}
+
+.path-loader button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #56a3ff;
+  border-radius: 6px;
+  background: #1d5f9f;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.path-loader button:hover:not(:disabled) {
+  background: #1a538b;
+}
+
+.path-loader button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
 .video-loader {
   position: relative;
+  flex: 0 0 auto;
   display: inline-flex;
   min-height: 40px;
   align-items: center;
@@ -83,6 +133,24 @@ h1 {
   font-size: 0.9rem;
 }
 
+.load-warning {
+  padding: 10px 12px;
+  border: 1px solid rgba(242, 184, 80, 0.45);
+  border-radius: 8px;
+  background: rgba(94, 67, 16, 0.42);
+  color: #ffe1a6;
+  font-size: 0.9rem;
+}
+
+.load-warning ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.load-warning li + li {
+  margin-top: 4px;
+}
+
 .editor-workbench {
   min-height: 0;
   overflow: hidden;
@@ -103,6 +171,11 @@ h1 {
   .editor-topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .path-loader {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .video-loader {
