@@ -1,37 +1,47 @@
-# Subtitle-Merger
+# Subtitle Merger
 
-Merges two .ass-files into one, so that two subtitles are shown simultaneously.
+Rust backend and React frontend scaffold for the subtitle merger application.
 
-## Installation
+## Project Layout
 
-Simply download the repository and run the following command:
-
-```
-git clone https://github.com/moritzbrantner/subtitle-merger
-pip install -r requirements.txt
+```text
+backend/   Rust API service
+frontend/  React + TypeScript Vite app
 ```
 
-## Usage
+## Prerequisites
 
-Try out with two subtitle files for your average video.mp4:
+- Rust toolchain with Cargo
+- Node.js with npm
 
-```cmd
-python subtitle-merger.py --primary-input=video.en-US.ass --secondary-input=video.de-DE.ass
+## Install
+
+```sh
+npm install
+cargo fetch --manifest-path backend/Cargo.toml
 ```
 
-You will then get a merged file called `video.en-US+de-DE.ass`,
-which can be added to your video as subtitles.
+## Development
 
-## Example
+Run the backend API:
 
-This short gif shows the result of the above command, a quick 
-video with two subtitle tracks:
+```sh
+npm run dev:backend
+```
 
-![](untitled.GIF)
+Run the frontend in another terminal:
 
-As you can see, two subtitle tracks are shown simultaneously.
+```sh
+npm run dev:frontend
+```
 
+The frontend runs at `http://localhost:5173` and proxies `/api/*` requests to
+the backend at `http://127.0.0.1:3000`.
 
-## License
+## Checks
 
-MIT
+```sh
+npm run check
+```
+
+This builds the frontend, checks the Rust backend, and runs backend tests.

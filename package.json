@@ -1,0 +1,19 @@
+{
+  "name": "subtitle-merger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "cargo run --manifest-path backend/Cargo.toml",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:backend": "cargo build --manifest-path backend/Cargo.toml",
+    "build:frontend": "npm run build --workspace frontend",
+    "check": "npm run lint --workspace frontend && npm run build:frontend && cargo check --manifest-path backend/Cargo.toml && cargo test --manifest-path backend/Cargo.toml",
+    "test:backend": "cargo test --manifest-path backend/Cargo.toml"
+  },
+  "devDependencies": {}
+}
