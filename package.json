@@ -3,17 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "bun@1.3.14",
   "workspaces": [
     "frontend"
   ],
   "scripts": {
     "dev:backend": "cargo run --manifest-path backend/Cargo.toml",
-    "dev:frontend": "npm run dev --workspace frontend",
-    "build": "npm run build:frontend && npm run build:backend",
+    "dev:frontend": "bun run --cwd frontend dev",
+    "build": "bun run build:frontend && bun run build:backend",
     "build:backend": "cargo build --manifest-path backend/Cargo.toml",
-    "build:frontend": "npm run build --workspace frontend",
-    "check": "npm run lint --workspace frontend && npm run build:frontend && cargo check --manifest-path backend/Cargo.toml && cargo test --manifest-path backend/Cargo.toml",
-    "test:backend": "cargo test --manifest-path backend/Cargo.toml"
+    "build:frontend": "bun run --cwd frontend build",
+    "check": "bun run --cwd frontend lint && bun run build:frontend && cargo check --manifest-path backend/Cargo.toml && cargo test --manifest-path backend/Cargo.toml",
+    "test:backend": "cargo test --manifest-path backend/Cargo.toml",
+    "e2e:fixture": "bun e2e/prepare-real-video.ts",
+    "test:e2e": "bun run e2e:fixture && bunx playwright test"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.61.0"
+  }
 }

@@ -15,7 +15,7 @@ use axum::{
         header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE},
     },
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -30,19 +30,23 @@ use tower_http::{
 use tracing_subscriber::{EnvFilter, fmt};
 use uuid::Uuid;
 
+mod generation;
+
 const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "webvtt", "ass", "ssa"];
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "m4v", "mov", "webm", "mkv", "avi"];
 const INFIX_TRIM_CHARS: &[char] = &[' ', '.', '-', '_'];
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     registry: Arc<RwLock<HashMap<String, RegisteredFile>>>,
+    pub(crate) generation: generation::GenerationState,
 }
 
 impl AppState {
     fn new() -> Self {
         Self {
             registry: Arc::new(RwLock::new(HashMap::new())),
+            generation: generation::GenerationState::new(),
         }
     }
 
@@ -223,6 +227,12 @@ fn app_with_state(state: AppState) -> Router {
         .route("/api/video-loads", post(create_video_load))
         .route("/api/media/{id}", get(get_media))
         .route("/api/subtitles/{id}", get(get_subtitle_text))
+        .route("/api/generation-preflight", get(generation::preflight))
+        .route("/api/subtitle-sessions", post(generation::create_session))
+        .route("/api/subtitle-sessions/{id}", delete(generation::delete_session))
+        .route("/api/subtitle-jobs", post(generation::create_job))
+        .route("/api/subtitle-jobs/{id}", get(generation::get_job).delete(generation::cancel_job))
+        .route("/api/subtitle-jobs/{id}/events", get(generation::events))
         .with_state(state)
         .layer(
             CorsLayer::new()

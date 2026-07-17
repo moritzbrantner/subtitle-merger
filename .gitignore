@@ -20,6 +20,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Downloaded end-to-end media fixture
+/e2e/fixtures/*.mp4
+/test-results/
+/playwright-report/
+/blob-report/
+
 # Editor / OS
 .DS_Store
 .idea/

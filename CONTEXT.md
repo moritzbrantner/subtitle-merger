@@ -15,3 +15,24 @@ _Avoid_: sidecar when the matching rule matters
 **Infix Title**:
 The cleaned suffix between the video stem and subtitle extension. It becomes the subtitle track and item label.
 _Avoid_: language code, suffix, raw suffix
+
+**Subtitle Generation Job**:
+A session-scoped request that uploads one video and produces source and optional translated subtitle tracks.
+
+**Source Subtitle Track**:
+The editable, time-aligned transcript in the spoken language.
+
+**Translated Subtitle Track**:
+A separately editable, time-aligned rendering of a Source Subtitle Track in one target language.
+
+**Translation Pair**:
+The source and target language combination used to select a translation model.
+
+**Pivot Translation**:
+A translation that passes through English because no validated direct Translation Pair exists.
+
+**Model Cache**:
+Persistent application-managed storage for downloaded ASR, alignment, translation, and diarization models.
+
+**Session Workspace**:
+Temporary server storage for a browser session's uploaded video and generation artifacts.

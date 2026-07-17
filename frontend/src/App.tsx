@@ -17,8 +17,6 @@ import {
 } from '@moritzbrantner/timeline-editor'
 import {
   createTimelineTextExtension,
-  parseTimelineText,
-  type TimelineTextFormat,
   type TimelineTextItemData,
 } from '@moritzbrantner/timeline-editor/text'
 import {
@@ -34,44 +32,12 @@ type EditorAsset = TimelineWorkbenchAsset<EditorItemData>
 type EditorHistory = TimelineEditorHistory<Record<string, unknown>, EditorItemData>
 type EditorExtension = TimelineEditorExtension<EditorItemData>
 
-type VideoLoadResponse = {
-  loadId: string
-  video: LoadedVideo
-  subtitles: LoadedSubtitle[]
-  warnings: LoadWarning[]
-}
-
-type LoadedVideo = {
-  id: string
-  filename: string
-  stem: string
-  mediaUrl: string
-  mimeType: string
-}
-
-type LoadedSubtitle = {
-  id: string
-  filename: string
-  infixTitle: string
-  mediaUrl: string
-  textUrl: string
-  format: string
-  mimeType: string
-}
-
-type LoadWarning = {
-  filename: string
-  message: string
-}
-
-type VideoMetadata = {
-  durationMs: number
-  width?: number
-  height?: number
-}
-
 const videoTrackId = 'primary-video'
 const defaultDocumentDurationMs = 30_000
+const languageOptions = [
+  ['en', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'],
+  ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],
+] as const
 
 function createEditorHistory(): EditorHistory {
   return createTimelineEditorHistory() as EditorHistory
@@ -124,252 +90,9 @@ function createDocumentForVideoAsset(asset: EditorAsset): EditorDocument {
   }
 }
 
-function createDocumentForBackendLoad(
-  videoAsset: EditorAsset,
-  subtitleAssets: EditorAsset[],
-): EditorDocument {
-  const subtitleDurations = subtitleAssets.map((asset) => asset.durationMs)
-  const durationMs = Math.max(videoAsset.durationMs, ...subtitleDurations, 1_000)
-  const videoItemId = `${videoAsset.id}-clip`
-
-  return {
-    durationMs,
-    currentTimeMs: 0,
-    tracks: [
-      {
-        id: videoTrackId,
-        label: 'Video',
-        kind: 'video',
-        acceptsItemKinds: ['video'],
-        height: 124,
-        items: [
-          {
-            id: videoItemId,
-            trackId: videoTrackId,
-            label: videoAsset.label,
-            startMs: 0,
-            durationMs: videoAsset.durationMs,
-            kind: videoAsset.kind,
-            color: videoAsset.color,
-            data: videoAsset.data,
-          },
-        ],
-      },
-      ...subtitleAssets.map((asset) => {
-        const trackId = `subtitle-${asset.id}`
-
-        return {
-          id: trackId,
-          label: asset.label,
-          kind: 'text',
-          acceptsItemKinds: ['text', 'subtitle', 'caption'],
-          height: 72,
-          items: [
-            {
-              id: `${asset.id}-item`,
-              trackId,
-              label: asset.label,
-              startMs: 0,
-              durationMs: asset.durationMs,
-              kind: asset.kind,
-              color: asset.color,
-              data: asset.data,
-            },
-          ],
-        }
-      }),
-    ],
-  }
-}
-
 function disposeCleanups(cleanups: TimelineMediaSourceCleanup[]) {
   for (const cleanup of cleanups) {
     cleanup()
-  }
-}
-
-function getLastCueEndMs(data: TimelineTextItemData): number {
-  return Math.max(0, ...(data.cues ?? []).map((cue) => cue.endMs))
-}
-
-function toTimelineTextFormat(format: string): TimelineTextFormat | undefined {
-  switch (format) {
-    case 'ass':
-    case 'ssa':
-    case 'srt':
-    case 'webvtt':
-      return format
-    default:
-      return undefined
-  }
-}
-
-async function readApiError(response: Response): Promise<string> {
-  try {
-    const json = (await response.json()) as { error?: unknown }
-
-    if (typeof json.error === 'string' && json.error.length > 0) {
-      return json.error
-    }
-  } catch {
-    return response.statusText || 'Request failed.'
-  }
-
-  return response.statusText || 'Request failed.'
-}
-
-function probeVideoMetadata(mediaUrl: string): Promise<VideoMetadata> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-
-    function cleanup() {
-      video.removeAttribute('src')
-      video.load()
-    }
-
-    video.preload = 'metadata'
-    video.onloadedmetadata = () => {
-      const durationMs = Math.round(video.duration * 1_000)
-
-      cleanup()
-
-      if (!Number.isFinite(durationMs) || durationMs <= 0) {
-        reject(new Error('Could not read video duration.'))
-        return
-      }
-
-      resolve({
-        durationMs,
-        width: video.videoWidth || undefined,
-        height: video.videoHeight || undefined,
-      })
-    }
-    video.onerror = () => {
-      cleanup()
-      reject(new Error('Could not load video metadata from the backend.'))
-    }
-    video.src = mediaUrl
-  })
-}
-
-function createBackendVideoAsset(
-  video: LoadedVideo,
-  metadata: VideoMetadata,
-  sourceLibrary: TimelineMediaSourceLibrary,
-): EditorAsset {
-  const source = {
-    id: video.id,
-    uri: video.mediaUrl,
-    label: video.filename,
-    mimeType: video.mimeType,
-  }
-
-  sourceLibrary.register(source)
-
-  return {
-    id: video.id,
-    label: video.filename,
-    kind: 'video',
-    mediaType: 'video',
-    durationMs: metadata.durationMs,
-    color: '#4f8cff',
-    data: {
-      mediaType: 'video',
-      source,
-      width: metadata.width,
-      height: metadata.height,
-      fit: 'contain',
-    },
-  }
-}
-
-async function createBackendSubtitleAsset(
-  subtitle: LoadedSubtitle,
-  videoDurationMs: number,
-  sourceLibrary: TimelineMediaSourceLibrary,
-): Promise<{ asset?: EditorAsset; warnings: LoadWarning[] }> {
-  const response = await fetch(subtitle.textUrl)
-
-  if (!response.ok) {
-    return {
-      warnings: [
-        {
-          filename: subtitle.filename,
-          message: await readApiError(response),
-        },
-      ],
-    }
-  }
-
-  const text = await response.text()
-  const warnings: LoadWarning[] = []
-
-  try {
-    const parsed = parseTimelineText(text, {
-      format: toTimelineTextFormat(subtitle.format),
-      sourceLabel: subtitle.filename,
-      mimeType: subtitle.mimeType,
-    })
-
-    for (const warning of parsed.warnings ?? []) {
-      warnings.push({
-        filename: subtitle.filename,
-        message: warning,
-      })
-    }
-
-    if (parsed.cues.length === 0) {
-      return {
-        warnings: [
-          ...warnings,
-          {
-            filename: subtitle.filename,
-            message: 'subtitle file has no cues',
-          },
-        ],
-      }
-    }
-
-    const source = {
-      id: subtitle.id,
-      uri: subtitle.mediaUrl,
-      label: subtitle.filename,
-      mimeType: subtitle.mimeType,
-    }
-    const data: TimelineTextItemData = {
-      mediaType: 'text',
-      format: parsed.format,
-      text,
-      cues: parsed.cues,
-      styles: parsed.styles,
-      source,
-    }
-    const durationMs = Math.max(getLastCueEndMs(data), videoDurationMs)
-
-    sourceLibrary.register(source)
-
-    return {
-      asset: {
-        id: subtitle.id,
-        label: subtitle.infixTitle,
-        kind: 'text',
-        mediaType: 'text',
-        durationMs,
-        color: '#2fbf71',
-        data,
-      },
-      warnings,
-    }
-  } catch (error) {
-    return {
-      warnings: [
-        ...warnings,
-        {
-          filename: subtitle.filename,
-          message: error instanceof Error ? error.message : 'subtitle file could not be parsed',
-        },
-      ],
-    }
   }
 }
 
@@ -443,10 +166,14 @@ function App() {
   const [clipboard, setClipboard] = useState<TimelineEditorClipboard<EditorItemData>>()
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
   const [assets, setAssets] = useState<EditorAsset[]>([])
-  const [videoPath, setVideoPath] = useState('')
-  const [isPathLoading, setIsPathLoading] = useState(false)
   const [loadError, setLoadError] = useState<string>()
-  const [loadWarnings, setLoadWarnings] = useState<LoadWarning[]>([])
+  const [generationMessage, setGenerationMessage] = useState<string>()
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [selectedVideo, setSelectedVideo] = useState<File>()
+  const [targetLanguage, setTargetLanguage] = useState('')
+  const [diarize, setDiarize] = useState(false)
+  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false)
+  const videoFileInputRef = useRef<HTMLInputElement>(null)
   const loadedVideoCleanupsRef = useRef<TimelineMediaSourceCleanup[]>([])
 
   useEffect(() => {
@@ -480,7 +207,6 @@ function App() {
 
   async function loadVideo(file: File) {
     setLoadError(undefined)
-    setLoadWarnings([])
     resetLoadedSources()
 
     try {
@@ -492,59 +218,35 @@ function App() {
 
       loadedVideoCleanupsRef.current = result.cleanup ? [result.cleanup] : []
       commitLoadedDocument([result.asset], createDocumentForVideoAsset(result.asset))
+      setSelectedVideo(file)
+      setGenerationMessage(undefined)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Could not load this video.')
     }
   }
 
-  async function loadVideoPath(path: string) {
-    const trimmedPath = path.trim()
-
-    if (!trimmedPath) {
-      setLoadError('Enter an absolute video path.')
-      setLoadWarnings([])
-      return
-    }
-
-    setIsPathLoading(true)
-    setLoadError(undefined)
-    setLoadWarnings([])
-    resetLoadedSources()
-
+  async function generateSubtitles() {
+    if (!selectedVideo) return
+    setIsGenerating(true)
+    setGenerationMessage('Preparing subtitle generation…')
     try {
-      const response = await fetch('/api/video-loads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path: trimmedPath }),
-      })
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response))
-      }
-
-      const load = (await response.json()) as VideoLoadResponse
-      const metadata = await probeVideoMetadata(load.video.mediaUrl)
-      const videoAsset = createBackendVideoAsset(load.video, metadata, sourceLibrary)
-      const subtitleResults = await Promise.all(
-        load.subtitles.map((subtitle) =>
-          createBackendSubtitleAsset(subtitle, metadata.durationMs, sourceLibrary),
-        ),
-      )
-      const subtitleAssets = subtitleResults.flatMap((result) =>
-        result.asset ? [result.asset] : [],
-      )
-      const subtitleWarnings = subtitleResults.flatMap((result) => result.warnings)
-      const nextDocument = createDocumentForBackendLoad(videoAsset, subtitleAssets)
-
-      commitLoadedDocument([videoAsset, ...subtitleAssets], nextDocument)
-      setLoadWarnings([...load.warnings, ...subtitleWarnings])
+      const sessionResponse = await fetch('/api/subtitle-sessions', { method: 'POST' })
+      if (!sessionResponse.ok) throw new Error('Could not create subtitle session.')
+      const { sessionId } = (await sessionResponse.json()) as { sessionId: string }
+      const form = new FormData()
+      form.set('sessionId', sessionId)
+      form.set('video', selectedVideo)
+      if (targetLanguage) form.set('targetLanguage', targetLanguage)
+      form.set('qualityProfile', 'balanced')
+      form.set('diarize', String(diarize))
+      const response = await fetch('/api/subtitle-jobs', { method: 'POST', body: form })
+      const job = (await response.json()) as { message?: string }
+      if (!response.ok) throw new Error(job.message ?? 'Could not start subtitle generation.')
+      setGenerationMessage(job.message ?? 'Subtitle generation started.')
     } catch (error) {
-      resetLoadedSources()
-      setLoadError(error instanceof Error ? error.message : 'Could not load this video path.')
+      setGenerationMessage(error instanceof Error ? error.message : 'Could not start subtitle generation.')
     } finally {
-      setIsPathLoading(false)
+      setIsGenerating(false)
     }
   }
 
@@ -556,32 +258,38 @@ function App() {
           <h1>Timeline Editor</h1>
         </div>
 
-        <form
-          className="path-loader"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void loadVideoPath(videoPath)
-          }}
-        >
-          <input
-            aria-label="Absolute video path"
-            type="text"
-            value={videoPath}
-            placeholder="/absolute/path/to/movie.mp4"
-            spellCheck={false}
-            onChange={(event) => {
-              setVideoPath(event.currentTarget.value)
+        <nav className="menu-bar" aria-label="Main menu">
+          <button
+            className="menu-trigger"
+            type="button"
+            aria-expanded={isFileMenuOpen}
+            aria-controls="file-menu"
+            aria-haspopup="menu"
+            onClick={() => {
+              setIsFileMenuOpen((isOpen) => !isOpen)
             }}
-          />
-          <button type="submit" disabled={isPathLoading}>
-            {isPathLoading ? 'Loading...' : 'Load video'}
+          >
+            File
           </button>
-        </form>
-
-        <label className="video-loader">
+          {isFileMenuOpen ? (
+            <div className="menu-items" id="file-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIsFileMenuOpen(false)
+                  videoFileInputRef.current?.click()
+                }}
+              >
+                Open video…
+              </button>
+            </div>
+          ) : null}
           <input
+            ref={videoFileInputRef}
+            className="video-file-input"
             type="file"
-            accept="video/*"
+            accept="video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0]
               event.currentTarget.value = ''
@@ -591,46 +299,56 @@ function App() {
               }
             }}
           />
-          Load local file
-        </label>
+        </nav>
       </header>
 
-      {loadError ? (
-        <div className="load-error" role="alert">
-          {loadError}
-        </div>
-      ) : null}
+      <div className="editor-content">
+        {loadError ? (
+          <div className="load-error" role="alert">
+            {loadError}
+          </div>
+        ) : null}
+        {selectedVideo ? (
+          <section className="generation-panel" aria-labelledby="generation-heading">
+            <div>
+              <p className="eyebrow">Automatic subtitles</p>
+              <h2 id="generation-heading">Generate subtitles</h2>
+              <p>Creates an editable source track and optional translated track.</p>
+            </div>
+            <label>
+              Translate to
+              <select value={targetLanguage} onChange={(event) => setTargetLanguage(event.currentTarget.value)}>
+                <option value="">No translation</option>
+                {languageOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+              </select>
+            </label>
+            <label className="checkbox-label"><input type="checkbox" checked={diarize} onChange={(event) => setDiarize(event.currentTarget.checked)} /> Identify speakers</label>
+            <button className="generate-button" type="button" disabled={isGenerating} onClick={() => void generateSubtitles()}>
+              {isGenerating ? 'Starting…' : 'Generate subtitles'}
+            </button>
+            {generationMessage ? <p className="generation-status" role="status">{generationMessage}</p> : null}
+          </section>
+        ) : null}
 
-      {loadWarnings.length > 0 ? (
-        <div className="load-warning" role="status">
-          <ul>
-            {loadWarnings.map((warning) => (
-              <li key={`${warning.filename}-${warning.message}`}>
-                <strong>{warning.filename}</strong>: {warning.message}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <section className="editor-workbench" aria-label="Video timeline editor">
-        <TimelineWorkbench
-          document={document}
-          selection={selection}
-          viewport={viewport}
-          clipboard={clipboard}
-          history={history}
-          assets={assets}
-          extensions={[videoExtension, textExtension]}
-          acceptedImportTypes={['video/*']}
-          onImportAssets={importAssets}
-          onDocumentChange={setDocument}
-          onSelectionChange={setSelection}
-          onViewportChange={setViewport}
-          onClipboardChange={setClipboard}
-          onHistoryChange={setHistory}
-        />
-      </section>
+        <section className="editor-workbench" aria-label="Video timeline editor">
+          <TimelineWorkbench
+            document={document}
+            selection={selection}
+            viewport={viewport}
+            clipboard={clipboard}
+            history={history}
+            assets={assets}
+            extensions={[videoExtension, textExtension]}
+            acceptedImportTypes={['video/*']}
+            onImportAssets={importAssets}
+            onDocumentChange={setDocument}
+            onSelectionChange={setSelection}
+            onViewportChange={setViewport}
+            onClipboardChange={setClipboard}
+            onHistoryChange={setHistory}
+          />
+        </section>
+      </div>
     </main>
   )
 }
