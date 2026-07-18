@@ -101,10 +101,6 @@ h1 {
   background: #1d5f9f;
 }
 
-.video-file-input {
-  display: none;
-}
-
 .load-error {
   padding: 10px 12px;
   border: 1px solid rgba(255, 110, 110, 0.45);
@@ -112,6 +108,32 @@ h1 {
   background: rgba(110, 24, 24, 0.42);
   color: #ffd5d5;
   font-size: 0.9rem;
+}
+
+.load-warning {
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 190, 72, 0.42);
+  border-radius: 8px;
+  background: rgba(105, 72, 10, 0.35);
+  color: #ffe8ad;
+  font-size: 0.9rem;
+}
+
+.load-warning ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.empty-state {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  border: 1px solid rgba(86, 163, 255, 0.32);
+  background: rgba(29, 95, 159, 0.2);
+  color: #d5e8ff;
 }
 
 .editor-content {
@@ -132,15 +154,86 @@ h1 {
   background: #181a1f;
 }
 
-.generation-panel h2, .generation-panel p { margin: 0; }
-.generation-panel > div { margin-right: auto; }
-.generation-panel > div > p:last-child, .generation-status { color: #b4bdca; font-size: .88rem; }
-.generation-panel label { display: grid; gap: 4px; color: #d7dce4; font-size: .85rem; }
-.generation-panel select { min-height: 36px; border: 1px solid #4b5565; border-radius: 5px; background: #0f1217; color: #f5f7fa; padding: 0 8px; }
-.generation-panel .checkbox-label { display: flex; align-items: center; min-height: 36px; gap: 7px; }
-.generate-button { min-height: 38px; padding: 0 14px; border: 1px solid #56a3ff; border-radius: 6px; background: #1d5f9f; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-.generate-button:disabled { opacity: .65; cursor: progress; }
-.generation-status { width: 100%; }
+.generation-panel h2,
+.generation-panel p {
+  margin: 0;
+}
+
+.generation-panel > div {
+  margin-right: auto;
+}
+
+.generation-panel > div > p:last-child,
+.generation-status {
+  color: #b4bdca;
+  font-size: 0.88rem;
+}
+
+.generation-panel label {
+  display: grid;
+  gap: 4px;
+  color: #d7dce4;
+  font-size: 0.85rem;
+}
+
+.generation-panel select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid #4b5565;
+  border-radius: 5px;
+  background: #0f1217;
+  color: #f5f7fa;
+}
+
+.generation-panel .checkbox-label {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 7px;
+}
+
+.generate-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #56a3ff;
+  border-radius: 6px;
+  background: #1d5f9f;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.generate-button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.generation-status {
+  width: 100%;
+}
+
+.reference-preview {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(86, 163, 255, 0.32);
+  border-radius: 8px;
+  background: #181a1f;
+}
+
+.reference-preview-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.reference-video {
+  display: block;
+  width: min(100%, 960px);
+  max-height: 42vh;
+  margin: 0 auto;
+  background: #000;
+}
 
 .editor-workbench {
   min-height: 0;
@@ -152,6 +245,12 @@ h1 {
 
 .editor-workbench > [data-slot='timeline-workbench'] {
   height: 100%;
+}
+
+.editor-workbench [data-slot='timeline-workbench-toolbar'] [role='slider'] {
+  flex: 0 0 8rem;
+  width: 8rem;
+  min-width: 8rem;
 }
 
 @media (max-width: 720px) {

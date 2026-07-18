@@ -224,6 +224,7 @@ fn app() -> Router {
 fn app_with_state(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/video-picks", post(pick_video))
         .route("/api/video-loads", post(create_video_load))
         .route("/api/media/{id}", get(get_media))
         .route("/api/subtitles/{id}", get(get_subtitle_text))
@@ -261,13 +262,28 @@ async fn create_video_load(
     State(state): State<AppState>,
     Json(request): Json<VideoLoadRequest>,
 ) -> Result<Json<VideoLoadResponse>, AppError> {
-    let raw_path = request.path.trim();
+    load_video_path(&state, Path::new(request.path.trim())).map(Json)
+}
+
+async fn pick_video(State(state): State<AppState>) -> Result<Response, AppError> {
+    let Some(file) = rfd::AsyncFileDialog::new()
+        .set_title("Open video")
+        .add_filter("Video files", VIDEO_EXTENSIONS)
+        .pick_file()
+        .await
+    else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+
+    Ok(Json(load_video_path(&state, file.path())?).into_response())
+}
+
+fn load_video_path(state: &AppState, input_path: &Path) -> Result<VideoLoadResponse, AppError> {
+    let raw_path = input_path.as_os_str().to_string_lossy();
 
     if raw_path.is_empty() {
         return Err(AppError::bad_request("path is required"));
     }
-
-    let input_path = PathBuf::from(raw_path);
 
     if !input_path.is_absolute() {
         return Err(AppError::bad_request("path must be absolute"));
@@ -332,7 +348,7 @@ async fn create_video_load(
         });
     }
 
-    Ok(Json(VideoLoadResponse {
+    Ok(VideoLoadResponse {
         load_id: Uuid::new_v4().to_string(),
         video: LoadedVideo {
             media_url: media_url(&video_id),
@@ -343,7 +359,7 @@ async fn create_video_load(
         },
         subtitles,
         warnings,
-    }))
+    })
 }
 
 async fn get_media(

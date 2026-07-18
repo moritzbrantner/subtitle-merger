@@ -16,6 +16,14 @@ _Avoid_: sidecar when the matching rule matters
 The cleaned suffix between the video stem and subtitle extension. It becomes the subtitle track and item label.
 _Avoid_: language code, suffix, raw suffix
 
+**Reference Video**:
+The selected video used for preview and timeline duration but not represented as a timeline track, item, asset, or inspector target.
+_Avoid_: video item, video track
+
+**Subtitle Track**:
+The editable timeline representation of one valid Subtitle Sibling and its complete cue sequence.
+_Avoid_: video track, cue track
+
 **Subtitle Generation Job**:
 A session-scoped request that uploads one video and produces source and optional translated subtitle tracks.
 

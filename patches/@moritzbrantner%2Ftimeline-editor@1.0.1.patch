@@ -1,0 +1,262 @@
+diff --git a/node_modules/@moritzbrantner/timeline-editor/.bun-tag-4b296d4d3d61af2a b/.bun-tag-4b296d4d3d61af2a
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@moritzbrantner/timeline-editor/.bun-tag-61c54b4bebd3f0c4 b/.bun-tag-61c54b4bebd3f0c4
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@moritzbrantner/timeline-editor/.bun-tag-97f341fd3af1466d b/.bun-tag-97f341fd3af1466d
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/audio-Dejc1zBq.d.ts b/dist/audio-Dejc1zBq.d.ts
+index ce7a8b0fd930ab57c27ab781c7b531aeb784a454..8951d27cc77aa146623a6019abf66707783fcbfc 100644
+--- a/dist/audio-Dejc1zBq.d.ts
++++ b/dist/audio-Dejc1zBq.d.ts
+@@ -405,6 +405,7 @@ type TimelineEditorProps<TTrackData extends Record<string, unknown> = Record<str
+     frameRate?: number;
+     timeMode?: TimelineEditorTimeMode;
+     tool?: TimelineEditorTool;
++    minPixelsPerSecond?: number;
+     minItemDurationMs?: number;
+     editPolicy?: Partial<TimelineEditorEditPolicy>;
+     snap?: Partial<TimelineEditorSnapOptions>;
+@@ -423,7 +424,7 @@ type TimelineEditorProps<TTrackData extends Record<string, unknown> = Record<str
+     getTrackContextMenuItems?: TimelineEditorTrackContextMenuItems<TTrackData, TItemData>;
+     getTimelineContextMenuItems?: TimelineEditorTimelineContextMenuItems<TTrackData, TItemData>;
+ };
+-type TimelineEditorProviderProps<TTrackData extends Record<string, unknown> = Record<string, unknown>, TItemData = Record<string, unknown>> = Pick<TimelineEditorProps<TTrackData, TItemData>, "document" | "editPolicy" | "followCurrentTime" | "frameRate" | "timeMode" | "getItemContextMenuItems" | "getTrackGroupContextMenuItems" | "getTimelineContextMenuItems" | "getTrackContextMenuItems" | "hotkeys" | "minItemDurationMs" | "onCurrentTimeChange" | "onDocumentChange" | "onSelectionChange" | "onViewportChange" | "readOnly" | "renderItem" | "renderTrackGroupHeader" | "renderTrackHeader" | "selection" | "snap" | "tool" | "viewport" | "virtualization"> & {
++type TimelineEditorProviderProps<TTrackData extends Record<string, unknown> = Record<string, unknown>, TItemData = Record<string, unknown>> = Pick<TimelineEditorProps<TTrackData, TItemData>, "document" | "editPolicy" | "followCurrentTime" | "frameRate" | "timeMode" | "getItemContextMenuItems" | "getTrackGroupContextMenuItems" | "getTimelineContextMenuItems" | "getTrackContextMenuItems" | "hotkeys" | "minPixelsPerSecond" | "minItemDurationMs" | "onCurrentTimeChange" | "onDocumentChange" | "onSelectionChange" | "onViewportChange" | "readOnly" | "renderItem" | "renderTrackGroupHeader" | "renderTrackHeader" | "selection" | "snap" | "tool" | "viewport" | "virtualization"> & {
+     children?: ReactNode;
+ };
+ type TimelineEditorTrackEntry<TTrackData, TItemData> = {
+@@ -760,6 +761,7 @@ type TimelineWorkbenchProps<TTrackData extends Record<string, unknown> = Record<
+     selection?: TimelineEditorSelection;
+     readOnly?: boolean;
+     pixelsPerSecond?: number;
++    minPixelsPerSecond?: number;
+     viewport?: TimelineEditorViewport;
+     frameRate?: number;
+     timeMode?: TimelineEditorTimeMode;
+diff --git a/dist/chunk-4ZXITCI5.js b/dist/chunk-4ZXITCI5.js
+index fae500c930727bd51e1684d04c2de3effcfa338b..a7836b002a00664ff6e6138b073add25252f28eb 100644
+--- a/dist/chunk-4ZXITCI5.js
++++ b/dist/chunk-4ZXITCI5.js
+@@ -77,7 +77,7 @@ function getTimelineEditorDurationForDocument(document2) {
+   return document2.durationMs ?? getTimelineEditorDurationMs(document2.tracks, 3e4);
+ }
+ function getTimelineEditorWidthPx(durationMs, pixelsPerSecond) {
+-  return Math.max(durationMs / 1e3 * pixelsPerSecond, 640);
++  return Math.max(durationMs / 1e3 * pixelsPerSecond, 1);
+ }
+ function getTimelineEditorItemStyle(startMs, durationMs, timelineWidthPx, durationMsForTimeline) {
+   return {
+@@ -91,7 +91,7 @@ function getTimelineEditorTimeFromPointer(event, durationMs) {
+   return x / Math.max(1, bounds.width) * durationMs;
+ }
+ function getTimelineEditorTimeFromDelta(deltaX, pixelsPerSecond) {
+-  return deltaX / Math.max(1, pixelsPerSecond) * 1e3;
++  return deltaX / Math.max(Number.EPSILON, pixelsPerSecond) * 1e3;
+ }
+ function getVisibleTimelineEditorTicks(durationMs, viewport) {
+   const intervalMs = viewport.pixelsPerSecond >= 120 ? 500 : void 0;
+@@ -336,7 +336,7 @@ function getTimelineEditorTimeAtClientX(clientX, scroller, pixelsPerSecond, dura
+   const scrollerRect = scroller.getBoundingClientRect();
+   const timelineOffsetPx = clientX - scrollerRect.left + scroller.scrollLeft - timelineEditorTrackHeaderWidthPx;
+   return clampTimelineEditorTime(
+-    timelineOffsetPx / Math.max(1, pixelsPerSecond) * 1e3,
++    timelineOffsetPx / Math.max(Number.EPSILON, pixelsPerSecond) * 1e3,
+     0,
+     durationMs
+   );
+@@ -353,7 +353,7 @@ function resolveTimelineEditorViewport(viewport) {
+   };
+ }
+ function getTimelineEditorVisibleRange(durationMs, viewport, measuredViewport, timelineOffsetPx = 0) {
+-  const pixelsPerSecond = Math.max(1, viewport.pixelsPerSecond);
++  const pixelsPerSecond = Math.max(Number.EPSILON, viewport.pixelsPerSecond);
+   const measuredStartPx = Math.max(0, measuredViewport.scrollLeftPx - timelineOffsetPx);
+   const measuredEndPx = Math.max(
+     measuredStartPx,
+@@ -376,16 +376,20 @@ function getVisibleTimelineEditorItems(items, range, selectedIds) {
+     (item) => selectedIds.has(item.id) || item.startMs <= range.endMs && getTimelineEditorItemEndMs(item) >= range.startMs
+   );
+ }
+-function getNextTimelineEditorPixelsPerSecond(pixelsPerSecond, direction) {
++function getNextTimelineEditorPixelsPerSecond(
++  pixelsPerSecond,
++  direction,
++  minPixelsPerSecond = timelineEditorMinPixelsPerSecond
++) {
+   return clampTimelineEditorTime(
+     pixelsPerSecond + direction * 16,
+-    timelineEditorMinPixelsPerSecond,
++    minPixelsPerSecond,
+     timelineEditorMaxPixelsPerSecond
+   );
+ }
+ function getTimelineEditorScrollLeftMs(scrollLeftPx, pixelsPerSecond, durationMs) {
+   return clampTimelineEditorTime(
+-    Math.max(0, scrollLeftPx - timelineEditorTrackHeaderWidthPx) / Math.max(1, pixelsPerSecond) * 1e3,
++    Math.max(0, scrollLeftPx - timelineEditorTrackHeaderWidthPx) / Math.max(Number.EPSILON, pixelsPerSecond) * 1e3,
+     0,
+     durationMs
+   );
+@@ -528,6 +532,7 @@ function useTimelineEditorKeyboard({
+   durationMs,
+   editPolicy,
+   hotkeys,
++  minPixelsPerSecond,
+   nudgeMs,
+   readOnly,
+   selection,
+@@ -594,7 +599,11 @@ function useTimelineEditorKeyboard({
+       const direction = matchesHotkey(event, hotkeys.zoomIn) ? 1 : -1;
+       onViewportChange?.({
+         ...viewport,
+-        pixelsPerSecond: getNextTimelineEditorPixelsPerSecond(viewport.pixelsPerSecond, direction)
++        pixelsPerSecond: getNextTimelineEditorPixelsPerSecond(
++          viewport.pixelsPerSecond,
++          direction,
++          minPixelsPerSecond
++        )
+       });
+     }
+   };
+@@ -693,6 +702,7 @@ function TimelineEditorProvider({
+   frameRate,
+   timeMode,
+   tool = "select",
++  minPixelsPerSecond = timelineEditorMinPixelsPerSecond,
+   minItemDurationMs,
+   editPolicy,
+   snap,
+@@ -809,6 +819,7 @@ function TimelineEditorProvider({
+     document: document2,
+     durationMs,
+     hotkeys: resolvedHotkeys,
++    minPixelsPerSecond,
+     editPolicy,
+     nudgeMs,
+     readOnly,
+@@ -904,7 +915,7 @@ function TimelineEditorProvider({
+     const scrollerRect = scroller?.getBoundingClientRect();
+     const timelineOffsetPx = scroller && scrollerRect ? event.clientX - scrollerRect.left + scroller.scrollLeft - timelineEditorTrackHeaderWidthPx : 0;
+     const timeMs = clampTimelineEditorTime(
+-      timelineOffsetPx / Math.max(1, resolvedViewport.pixelsPerSecond) * 1e3,
++      timelineOffsetPx / Math.max(Number.EPSILON, resolvedViewport.pixelsPerSecond) * 1e3,
+       0,
+       durationMs
+     );
+@@ -1257,7 +1268,8 @@ function TimelineEditorProvider({
+       const direction = event.deltaY < 0 ? 1 : -1;
+       const nextPixelsPerSecond = getNextTimelineEditorPixelsPerSecond(
+         resolvedViewport.pixelsPerSecond,
+-        direction
++        direction,
++        minPixelsPerSecond
+       );
+       if (nextPixelsPerSecond === resolvedViewport.pixelsPerSecond) {
+         return;
+@@ -1269,7 +1281,7 @@ function TimelineEditorProvider({
+         scroller.clientWidth
+       );
+       const timeMs = clampTimelineEditorTime(
+-        (scroller.scrollLeft + offsetX - timelineEditorTrackHeaderWidthPx) / Math.max(1, resolvedViewport.pixelsPerSecond) * 1e3,
++        (scroller.scrollLeft + offsetX - timelineEditorTrackHeaderWidthPx) / Math.max(Number.EPSILON, resolvedViewport.pixelsPerSecond) * 1e3,
+         0,
+         durationMs
+       );
+@@ -2687,6 +2699,7 @@ function TimelineEditor({
+   frameRate,
+   timeMode,
+   tool,
++  minPixelsPerSecond,
+   minItemDurationMs,
+   editPolicy,
+   snap,
+@@ -2717,6 +2730,7 @@ function TimelineEditor({
+     getTrackGroupContextMenuItems,
+     getTrackContextMenuItems,
+     hotkeys,
++    minPixelsPerSecond,
+     minItemDurationMs,
+     onCurrentTimeChange,
+     onDocumentChange,
+@@ -3510,6 +3524,7 @@ function TimelineWorkbenchCanvas({
+   hotkeys,
+   readOnly,
+   tool,
++  minPixelsPerSecond,
+   minItemDurationMs,
+   resolvedSelection,
+   snap,
+@@ -3548,7 +3563,7 @@ function TimelineWorkbenchCanvas({
+       0,
+       Math.min(
+         document2.durationMs ?? Number.POSITIVE_INFINITY,
+-        timelineOffsetPx / Math.max(1, resolvedViewport.pixelsPerSecond) * 1e3
++        timelineOffsetPx / Math.max(Number.EPSILON, resolvedViewport.pixelsPerSecond) * 1e3
+       )
+     );
+     const timeMs = Math.max(
+@@ -3640,6 +3655,7 @@ function TimelineWorkbenchCanvas({
+               virtualization,
+               followCurrentTime,
+               hotkeys: { ...defaultTimelineWorkbenchHotkeys, ...hotkeys },
++              minPixelsPerSecond,
+               onCurrentTimeChange,
+               onDocumentChange,
+               onSelectionChange,
+@@ -5056,6 +5072,7 @@ function TimelineWorkbenchToolbar({
+   inspectorContext,
+   overlaps,
+   pixelsPerSecond,
++  minPixelsPerSecond,
+   readOnly,
+   resolvedHotkeys,
+   resolvedSelection,
+@@ -5340,7 +5357,7 @@ function TimelineWorkbenchToolbar({
+             {
+               className: "w-32",
+               value: [resolvedViewport.pixelsPerSecond],
+-              min: timelineEditorMinPixelsPerSecond,
++              min: minPixelsPerSecond,
+               max: timelineEditorMaxPixelsPerSecond,
+               step: 4,
+               onValueChange: (value) => {
+@@ -7333,6 +7350,7 @@ function TimelineWorkbench({
+   selection,
+   readOnly = false,
+   pixelsPerSecond = 80,
++  minPixelsPerSecond = timelineEditorMinPixelsPerSecond,
+   viewport,
+   frameRate,
+   timeMode,
+@@ -8375,6 +8393,7 @@ function TimelineWorkbench({
+       inspectorContext,
+       overlaps,
+       pixelsPerSecond,
++      minPixelsPerSecond,
+       readOnly,
+       resolvedHotkeys,
+       resolvedSnap,
+@@ -8542,6 +8561,7 @@ function TimelineWorkbench({
+         getTrackContextMenuItems: getWorkbenchTrackContextMenuItems,
+         readOnly,
+         tool: resolvedTool,
++        minPixelsPerSecond,
+         minItemDurationMs,
+         renderTimelineItem: renderResolvedTimelineItem,
+         renderTrackGroupHeader,
+diff --git a/dist/chunk-LVW5SWIA.js b/dist/chunk-LVW5SWIA.js
+index 05b2d7659d90e6b6ce52e45f50c18dd342df8472..2c7a90f00af8b9f02d45effeaf450e69464516c2 100644
+--- a/dist/chunk-LVW5SWIA.js
++++ b/dist/chunk-LVW5SWIA.js
+@@ -219,7 +219,7 @@ function createTimelineEditorSnapResolver(document, snap, pixelsPerSecond, optio
+     }
+   }
+   const sortedSnapTimesMs = [...snapTimesMs].sort((left, right) => left - right);
+-  const thresholdMs = snap.thresholdPx / Math.max(1, pixelsPerSecond) * 1e3;
++  const thresholdMs = snap.thresholdPx / Math.max(Number.EPSILON, pixelsPerSecond) * 1e3;
+   return (timeMs) => {
+     let bestTimeMs = timeMs;
+     let bestDistanceMs = Number.POSITIVE_INFINITY;
