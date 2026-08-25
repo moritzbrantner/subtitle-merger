@@ -49,10 +49,11 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
       sourceOrder: itemIndex * 1_000_000 + cueIndex,
     }))
   })
+  const exportLabel = track.data?.exportLabel
 
   return {
     id: track.id,
-    label: track.label,
+    label: typeof exportLabel === 'string' && exportLabel.trim() ? exportLabel : track.label,
     language: items.find((item) => item.data?.language)?.data?.language,
     cues,
   }
