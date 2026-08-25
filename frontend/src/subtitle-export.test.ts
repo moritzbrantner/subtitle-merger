@@ -42,6 +42,38 @@ describe('subtitle export', () => {
     )
   })
 
+  it('exports every positioned text item using its timeline placement', () => {
+    const current = session()
+    const track = current.document.tracks[0]
+    const firstItem = track?.items[0]
+
+    expect(firstItem?.data?.cues).toBeDefined()
+    if (!track || !firstItem?.data?.cues) return
+
+    firstItem.startMs = 1_000
+    track.items.push({
+      ...firstItem,
+      id: 'copied-item',
+      startMs: 5_000,
+      data: {
+        ...firstItem.data,
+        cues: [{ id: 'copied-cue', startMs: 0, endMs: 500, text: 'Copied subtitle' }],
+      },
+    })
+
+    const exported = exportSubtitleTrack(current.document, track.id, 'srt')
+
+    expect(exported.text).toContain(
+      '1\n00:00:01,250 --> 00:00:02,500\nOriginal text',
+    )
+    expect(exported.text).toContain(
+      '2\n00:00:03,000 --> 00:00:04,250\nZweite Zeile',
+    )
+    expect(exported.text).toContain(
+      '3\n00:00:05,000 --> 00:00:05,500\nCopied subtitle',
+    )
+  })
+
   it('writes WebVTT with stable chronological cue order', () => {
     const current = session()
     const exported = exportSubtitleTrack(current.document, 'subtitle-generated-de', 'webvtt')
