@@ -82,3 +82,5 @@ bun run test:e2e
 ## Dependency development
 
 Ordinary application work is source-first. See `docs/adr/0003-released-native-whisperx-boundary.md` for the Native WhisperX development/release boundary. Package publication is not required to prove feature work.
+
+The frontend pins Timeline Editor to an exact Git revision and resolves the Timeline Editor entry points it consumes directly from that revision's `src/` tree. Its transitive dependencies continue to use their normal package exports. Update the pin only when a concrete Subtitle Merger workflow requires reviewed upstream behavior; do not patch compiled `node_modules` output.
