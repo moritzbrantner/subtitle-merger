@@ -5,7 +5,7 @@ use native_whisperx::{
 
 #[test]
 fn plans_direct_and_pivot_translation_without_loading_models() {
-    let direct = TranslationPlan::from_language_codes("de", "es").expect("direct plan");
+    let direct = TranslationPlan::from_language_codes("de", "en").expect("direct plan");
     assert!(matches!(
         direct.provenance(),
         TranslationPlanProvenance::Direct
