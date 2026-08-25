@@ -51,7 +51,7 @@ jobs:
           text = text.replace('                job.state = "failed".to_string();\n                job.phase = "failed".to_string();', '                job.state = JobState::Failed;\n                job.phase = JobPhase::Failed;', 1)
           text = text.replace(
               '        let payload = serde_json::to_string(&*job)\n            .unwrap_or_else(|_| "{\\"state\\":\\"failed\\"}".to_string());\n        inner.active_job = None;\n        let _ = sender.send(payload);',
-              '        inner.active_job = None;\n        if let Ok(payload) = serde_json::to_string(&*job) {\n            let _ = sender.send(payload);\n        }',
+              '        let payload = serde_json::to_string(&*job).ok();\n        inner.active_job = None;\n        if let Some(payload) = payload {\n            let _ = sender.send(payload);\n        }',
               1,
           )
           text = text.replace(
