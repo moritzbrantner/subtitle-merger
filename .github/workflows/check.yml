@@ -22,3 +22,5 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check application
         run: bun run check
+      - name: Verify Cargo lockfile is current
+        run: git diff --exit-code -- Cargo.lock
