@@ -10,6 +10,14 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    "paths": {
+      "@moritzbrantner/timeline-editor": [
+        "../node_modules/@moritzbrantner/timeline-editor/src/index.ts"
+      ],
+      "@moritzbrantner/timeline-editor/text": [
+        "../node_modules/@moritzbrantner/timeline-editor/src/text.ts"
+      ]
+    },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
