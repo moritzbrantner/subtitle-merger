@@ -66,6 +66,8 @@ struct Cue {
     start_ms: u64,
     end_ms: u64,
     text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -532,6 +534,7 @@ fn track_from_transcript(transcript: &TranscriptionContract, pivoted: bool) -> T
                     * 1000.0)
                     .round() as u64,
                 text: segment.text.clone(),
+                actor: segment.speaker.clone(),
             })
             .collect(),
     }
@@ -546,5 +549,35 @@ impl TranscriptionProgressObserver for SseObserver {
         let _ = self.sender.send(
             serde_json::json!({ "state": "running", "phase": format!("{event:?}") }).to_string(),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::track_from_transcript;
+    use native_whisperx::{TranscriptSegmentContract, TranscriptionContract};
+
+    #[test]
+    fn transcript_track_preserves_speaker_as_cue_actor() {
+        let mut spoken = TranscriptSegmentContract::new(0, "Hello there");
+        spoken.start_seconds = Some(1.25);
+        spoken.end_seconds = Some(2.5);
+        spoken.speaker = Some("Speaker 1".to_string());
+
+        let mut silent_actor = TranscriptSegmentContract::new(1, "No speaker label");
+        silent_actor.start_seconds = Some(2.5);
+        silent_actor.end_seconds = Some(3.0);
+
+        let mut transcript = TranscriptionContract::new(vec![spoken, silent_actor]);
+        transcript.language = Some("en".to_string());
+
+        let track = track_from_transcript(&transcript, false);
+        assert_eq!(track.cues[0].actor.as_deref(), Some("Speaker 1"));
+        assert_eq!(track.cues[0].text, "Hello there");
+        assert_eq!(track.cues[1].actor, None);
+
+        let json = serde_json::to_value(&track).expect("track serialization");
+        assert_eq!(json["cues"][0]["actor"], "Speaker 1");
+        assert!(json["cues"][1].get("actor").is_none());
     }
 }
