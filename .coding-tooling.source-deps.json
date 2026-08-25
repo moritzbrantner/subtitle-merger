@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "cargo": {
+    "patches": [
+      {
+        "package": "native-whisperx",
+        "git": "https://github.com/moritzbrantner/native-whisperx",
+        "rev": "0f42fa16f95a9675bb7562112f388706481f839e",
+        "localPath": "../native-whisperx/crates/native-whisperx"
+      },
+      {
+        "package": "moenarch-audio-analysis-core",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-core"
+      },
+      {
+        "package": "moenarch-audio-analysis-fourier",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-fourier"
+      },
+      {
+        "package": "moenarch-audio-analysis-recognition",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-recognition"
+      },
+      {
+        "package": "moenarch-audio-analysis-io",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-io"
+      },
+      {
+        "package": "moenarch-audio-analysis-speakers",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-speakers"
+      },
+      {
+        "package": "moenarch-audio-analysis-transcription",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "56bbd9a00028708bf64c13e2528ca213393d1591",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-transcription"
+      }
+    ]
+  }
+}
