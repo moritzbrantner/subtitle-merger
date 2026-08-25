@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+tooling_dir="${CODING_TOOLING_DIR:-$root/../coding-tooling}"
+
+if command -v coding-tooling >/dev/null 2>&1; then
+  exec coding-tooling source-deps "$@"
+fi
+
+if [[ -f "$tooling_dir/src/cli.ts" ]]; then
+  exec bun "$tooling_dir/src/cli.ts" source-deps "$@"
+fi
+
+printf '%s\n' "coding-tooling is required. Install it or set CODING_TOOLING_DIR to a sibling checkout." >&2
+exit 2
