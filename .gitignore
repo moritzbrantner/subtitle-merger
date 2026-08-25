@@ -1,6 +1,7 @@
 # Rust
 /target/
 **/target/
+/.cargo/config.toml
 
 # Node / Vite
 node_modules/
