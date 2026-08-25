@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   exportSubtitleTrack,
   listEditableSubtitleTracks,
@@ -15,19 +15,35 @@ type SubtitleExportDialogProps = {
   onClose: () => void
 }
 
+const focusableSelector = [
+  'button:not([disabled])',
+  'select:not([disabled])',
+  'input:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ')
+
 export function SubtitleExportDialog({
   open,
-  document,
+  document: subtitleDocument,
   selectedTrackIds,
   onClose,
 }: SubtitleExportDialogProps) {
-  const tracks = useMemo(() => listEditableSubtitleTracks(document), [document])
+  const tracks = useMemo(() => listEditableSubtitleTracks(subtitleDocument), [subtitleDocument])
   const [trackId, setTrackId] = useState('')
   const [format, setFormat] = useState<SubtitleExportFormat>('srt')
   const [error, setError] = useState<string>()
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLElement>(null)
+  const trackSelectRef = useRef<HTMLSelectElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const wasOpenRef = useRef(false)
 
   useEffect(() => {
-    if (!open) {
+    const opening = open && !wasOpenRef.current
+    wasOpenRef.current = open
+
+    if (!opening) {
       return
     }
 
@@ -37,18 +53,84 @@ export function SubtitleExportDialog({
   }, [open, selectedTrackIds, tracks])
 
   useEffect(() => {
+    if (!open || tracks.some((track) => track.id === trackId)) {
+      return
+    }
+
+    setTrackId(resolveExportTrackId(tracks, selectedTrackIds ?? []) ?? '')
+  }, [open, selectedTrackIds, trackId, tracks])
+
+  useEffect(() => {
     if (!open) {
       return
     }
 
+    const previousFocus = window.document.activeElement as HTMLElement | null
+    const overlay = overlayRef.current
+    const siblings = overlay?.parentElement
+      ? Array.from(overlay.parentElement.children).filter((element) => element !== overlay)
+      : []
+    const previousInert = siblings.map((element) => [element, (element as HTMLElement).inert] as const)
+
+    for (const element of siblings) {
+      ;(element as HTMLElement).inert = true
+    }
+
+    const focusInitialControl = () => {
+      ;(trackSelectRef.current ?? closeButtonRef.current)?.focus()
+    }
+    window.requestAnimationFrame(focusInitialControl)
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.preventDefault()
         onClose()
+        return
+      }
+
+      if (event.key !== 'Tab') {
+        return
+      }
+
+      const controls = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
+      )
+
+      if (controls.length === 0) {
+        event.preventDefault()
+        return
+      }
+
+      const first = controls[0]!
+      const last = controls.at(-1)!
+      const active = window.document.activeElement
+
+      if (!dialogRef.current?.contains(active)) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.cancelAnimationFrame(window.requestAnimationFrame(() => undefined))
+      window.removeEventListener('keydown', handleKeyDown)
+      for (const [element, inert] of previousInert) {
+        ;(element as HTMLElement).inert = inert
+      }
+
+      const restoreTarget = previousFocus?.isConnected
+        ? previousFocus
+        : window.document.querySelector<HTMLElement>('button[aria-controls="file-menu"]')
+      restoreTarget?.focus()
+    }
   }, [onClose, open])
 
   if (!open) {
@@ -62,7 +144,7 @@ export function SubtitleExportDialog({
     }
 
     try {
-      downloadSubtitleExport(exportSubtitleTrack(document, trackId, format))
+      downloadSubtitleExport(exportSubtitleTrack(subtitleDocument, trackId, format))
       onClose()
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Could not export subtitles.')
@@ -71,6 +153,7 @@ export function SubtitleExportDialog({
 
   return (
     <div
+      ref={overlayRef}
       className="subtitle-export-overlay"
       role="presentation"
       onMouseDown={(event) => {
@@ -80,6 +163,7 @@ export function SubtitleExportDialog({
       }}
     >
       <section
+        ref={dialogRef}
         className="subtitle-export-dialog"
         role="dialog"
         aria-modal="true"
@@ -91,6 +175,7 @@ export function SubtitleExportDialog({
             <h2 id="subtitle-export-heading">Save the current edited track</h2>
           </div>
           <button
+            ref={closeButtonRef}
             className="subtitle-export-close"
             type="button"
             aria-label="Close export dialog"
@@ -104,7 +189,11 @@ export function SubtitleExportDialog({
           <div className="subtitle-export-fields">
             <label>
               Track
-              <select value={trackId} onChange={(event) => setTrackId(event.currentTarget.value)}>
+              <select
+                ref={trackSelectRef}
+                value={trackId}
+                onChange={(event) => setTrackId(event.currentTarget.value)}
+              >
                 {tracks.map((track) => (
                   <option key={track.id} value={track.id}>
                     {track.label}
