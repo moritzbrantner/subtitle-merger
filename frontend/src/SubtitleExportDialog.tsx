@@ -18,7 +18,7 @@ type SubtitleExportDialogProps = {
 export function SubtitleExportDialog({
   open,
   document,
-  selectedTrackIds = [],
+  selectedTrackIds,
   onClose,
 }: SubtitleExportDialogProps) {
   const tracks = useMemo(() => listEditableSubtitleTracks(document), [document])
@@ -31,7 +31,7 @@ export function SubtitleExportDialog({
       return
     }
 
-    setTrackId(resolveExportTrackId(tracks, selectedTrackIds) ?? '')
+    setTrackId(resolveExportTrackId(tracks, selectedTrackIds ?? []) ?? '')
     setFormat('srt')
     setError(undefined)
   }, [open, selectedTrackIds, tracks])
@@ -107,7 +107,7 @@ export function SubtitleExportDialog({
               <select value={trackId} onChange={(event) => setTrackId(event.currentTarget.value)}>
                 {tracks.map((track) => (
                   <option key={track.id} value={track.id}>
-                    {track.label}{track.language ? ` — ${track.language.toUpperCase()}` : ''}
+                    {track.label}
                   </option>
                 ))}
               </select>
