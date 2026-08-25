@@ -27,10 +27,11 @@ describe('subtitle export', () => {
   it('serializes the edited timeline state instead of the original source text', () => {
     const current = session()
     const data = current.document.tracks[0]?.items[0]?.data
+    const cues = data?.cues
 
-    expect(data).toBeDefined()
-    if (!data) return
-    data.cues[1]!.text = 'Edited subtitle'
+    expect(cues).toBeDefined()
+    if (!cues) return
+    cues[1]!.text = 'Edited subtitle'
 
     const exported = exportSubtitleTrack(current.document, 'subtitle-generated-de', 'srt')
 
