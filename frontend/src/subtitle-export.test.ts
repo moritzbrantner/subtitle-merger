@@ -23,6 +23,27 @@ function session() {
   return buildSubtitleSession(5_000, [asset])
 }
 
+function speakerSession() {
+  const asset: SubtitleAsset = {
+    id: 'generated-en',
+    label: 'Subtitles',
+    kind: 'text',
+    mediaType: 'text',
+    durationMs: 5_000,
+    data: {
+      mediaType: 'text',
+      format: 'webvtt',
+      language: 'en',
+      cues: [
+        { id: 'one', startMs: 250, endMs: 1_500, text: 'Hello there', actor: 'SPEAKER_00' },
+        { id: 'two', startMs: 2_000, endMs: 3_250, text: 'General Kenobi', actor: 'SPEAKER_01' },
+      ],
+    },
+  }
+
+  return buildSubtitleSession(5_000, [asset])
+}
+
 describe('subtitle export', () => {
   it('serializes the edited timeline state instead of the original source text', () => {
     const current = session()
@@ -71,6 +92,62 @@ describe('subtitle export', () => {
     )
     expect(exported.text).toContain(
       '3\n00:00:05,000 --> 00:00:05,500\nCopied subtitle',
+    )
+  })
+
+  it('preserves speaker labels in SRT without putting them in the filename', () => {
+    const current = speakerSession()
+    const exported = exportSubtitleTrack(current.document, 'subtitle-generated-en', 'srt')
+
+    expect(exported.filename).toBe('subtitles-en.srt')
+    expect(exported.text).toContain('SPEAKER_00: Hello there')
+    expect(exported.text).toContain('SPEAKER_01: General Kenobi')
+  })
+
+  it('writes standard WebVTT voice annotations for diarized cues', () => {
+    const current = speakerSession()
+    const exported = exportSubtitleTrack(current.document, 'subtitle-generated-en', 'webvtt')
+
+    expect(exported.filename).toBe('subtitles-en.vtt')
+    expect(exported.text).toContain('<v SPEAKER_00>Hello there')
+    expect(exported.text).toContain('<v SPEAKER_01>General Kenobi')
+  })
+
+  it('keeps speaker identity after editing, moving, and duplicating subtitle items', () => {
+    const current = speakerSession()
+    const track = current.document.tracks[0]
+    const firstItem = track?.items[0]
+
+    expect(firstItem?.data?.cues).toBeDefined()
+    if (!track || !firstItem?.data?.cues) return
+
+    firstItem.startMs = 1_000
+    firstItem.data.cues[0]!.text = 'Edited hello'
+    track.items.push({
+      ...firstItem,
+      id: 'speaker-copy',
+      startMs: 5_000,
+      data: {
+        ...firstItem.data,
+        cues: [
+          {
+            id: 'speaker-copy-cue',
+            startMs: 0,
+            endMs: 500,
+            text: 'Copied reply',
+            actor: 'SPEAKER_01',
+          },
+        ],
+      },
+    })
+
+    const exported = exportSubtitleTrack(current.document, track.id, 'srt')
+
+    expect(exported.text).toContain(
+      '1\n00:00:01,250 --> 00:00:02,500\nSPEAKER_00: Edited hello',
+    )
+    expect(exported.text).toContain(
+      '3\n00:00:05,000 --> 00:00:05,500\nSPEAKER_01: Copied reply',
     )
   })
 
