@@ -12,6 +12,7 @@ type ExportCue = {
   startMs: number
   endMs: number
   text: string
+  actor?: string
   sourceOrder: number
 }
 
@@ -44,13 +45,15 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
       startMs: placementMs + cue.startMs,
       endMs: placementMs + cue.endMs,
       text: cue.text,
+      actor: cue.actor?.trim() || undefined,
       sourceOrder: itemIndex * 1_000_000 + cueIndex,
     }))
   })
+  const exportLabel = track.data?.exportLabel
 
   return {
     id: track.id,
-    label: track.label,
+    label: typeof exportLabel === 'string' && exportLabel.trim() ? exportLabel : track.label,
     language: items.find((item) => item.data?.language)?.data?.language,
     cues,
   }
@@ -83,11 +86,23 @@ function normalizedCues(cues: ExportCue[]) {
     )
 }
 
+function srtCueText(cue: ExportCue): string {
+  return cue.actor ? `${cue.actor}: ${cue.text}` : cue.text
+}
+
+function webVttVoice(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+function webVttCueText(cue: ExportCue): string {
+  return cue.actor ? `<v ${webVttVoice(cue.actor)}>${cue.text}` : cue.text
+}
+
 function serializeSrt(cues: ExportCue[]): string {
   return normalizedCues(cues)
     .map(
       (cue, index) =>
-        `${index + 1}\n${timestamp(cue.startMs, ',')} --> ${timestamp(cue.endMs, ',')}\n${cue.text}`,
+        `${index + 1}\n${timestamp(cue.startMs, ',')} --> ${timestamp(cue.endMs, ',')}\n${srtCueText(cue)}`,
     )
     .join('\n\n') + '\n'
 }
@@ -96,7 +111,7 @@ function serializeWebVtt(cues: ExportCue[]): string {
   const body = normalizedCues(cues)
     .map(
       (cue) =>
-        `${timestamp(cue.startMs, '.')} --> ${timestamp(cue.endMs, '.')}\n${cue.text}`,
+        `${timestamp(cue.startMs, '.')} --> ${timestamp(cue.endMs, '.')}\n${webVttCueText(cue)}`,
     )
     .join('\n\n')
 

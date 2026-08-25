@@ -18,24 +18,62 @@ function getLastCueEndMs(asset: SubtitleAsset): number {
   return Math.max(0, ...(asset.data?.cues ?? []).map((cue) => cue.endMs))
 }
 
+function getSpeakers(asset: SubtitleAsset): string[] {
+  const speakers: string[] = []
+  const seen = new Set<string>()
+
+  for (const cue of asset.data?.cues ?? []) {
+    const speaker = cue.actor?.trim()
+
+    if (speaker && !seen.has(speaker)) {
+      seen.add(speaker)
+      speakers.push(speaker)
+    }
+  }
+
+  return speakers
+}
+
+function getSpeakerSummary(speakers: string[]): string | undefined {
+  if (speakers.length === 0) {
+    return undefined
+  }
+
+  const visible = speakers.slice(0, 3)
+  const remaining = speakers.length - visible.length
+
+  return remaining > 0 ? `${visible.join(', ')} +${remaining}` : visible.join(', ')
+}
+
+function getTrackLabel(asset: SubtitleAsset, speakers: string[]): string {
+  const speakerSummary = getSpeakerSummary(speakers)
+  return speakerSummary ? `${asset.label} · ${speakerSummary}` : asset.label
+}
+
 export function buildSubtitleSession(
   referenceVideoDurationMs: number,
   assets: SubtitleAsset[],
 ): SubtitleSession {
   const tracks = assets.map((asset) => {
     const trackId = `subtitle-${asset.id}`
+    const speakers = getSpeakers(asset)
+    const trackLabel = getTrackLabel(asset, speakers)
 
     return {
       id: trackId,
-      label: asset.label,
+      label: trackLabel,
       kind: 'text',
       acceptsItemKinds: ['text', 'subtitle', 'caption'],
       height: 72,
+      data: {
+        exportLabel: asset.label,
+        speakers,
+      },
       items: [
         {
           id: `${asset.id}-item`,
           trackId,
-          label: asset.label,
+          label: trackLabel,
           startMs: 0,
           durationMs: asset.durationMs,
           kind: 'text',

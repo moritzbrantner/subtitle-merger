@@ -39,6 +39,24 @@ describe('buildSubtitleSession', () => {
     expect(session.document.durationMs).toBe(90_000)
   })
 
+  it('adds stable speaker summaries to diarized track labels', () => {
+    const asset = subtitleAsset('en', 'English', 10_000)
+    asset.data!.cues = [
+      { startMs: 0, endMs: 1_000, text: 'One', actor: 'SPEAKER_00' },
+      { startMs: 1_000, endMs: 2_000, text: 'Two', actor: 'SPEAKER_01' },
+      { startMs: 2_000, endMs: 3_000, text: 'Again', actor: 'SPEAKER_00' },
+    ]
+
+    const session = buildSubtitleSession(90_000, [asset])
+
+    expect(session.document.tracks[0]?.label).toBe('English · SPEAKER_00, SPEAKER_01')
+    expect(session.document.tracks[0]?.items[0]?.data?.cues?.map((cue) => cue.actor)).toEqual([
+      'SPEAKER_00',
+      'SPEAKER_01',
+      'SPEAKER_00',
+    ])
+  })
+
   it('extends the subtitle timeline for a cue that ends after the Reference Video', () => {
     const session = buildSubtitleSession(90_000, [subtitleAsset('en', 'English', 95_000)])
 
