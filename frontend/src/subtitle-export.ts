@@ -1,4 +1,3 @@
-import type { TimelineTextItemData } from '@moritzbrantner/timeline-editor/text'
 import type { SubtitleDocument } from './subtitle-session'
 
 export type SubtitleExportFormat = 'srt' | 'webvtt'
@@ -9,10 +8,18 @@ export type SubtitleExport = {
   text: string
 }
 
+type ExportCue = {
+  startMs: number
+  endMs: number
+  text: string
+  sourceOrder: number
+}
+
 type EditableSubtitleTrack = {
   id: string
   label: string
-  data: TimelineTextItemData
+  language?: string
+  cues: ExportCue[]
 }
 
 function subtitleData(document: SubtitleDocument, trackId: string): EditableSubtitleTrack {
@@ -22,13 +29,31 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
     throw new Error(`Subtitle track ${trackId} does not exist.`)
   }
 
-  const item = track.items.find((candidate) => candidate.data?.mediaType === 'text')
+  const items = track.items.filter(
+    (candidate) => candidate.data?.mediaType === 'text' && Array.isArray(candidate.data.cues),
+  )
 
-  if (!item?.data || !Array.isArray(item.data.cues)) {
+  if (items.length === 0) {
     throw new Error(`Subtitle track ${trackId} has no editable cues.`)
   }
 
-  return { id: track.id, label: track.label, data: item.data }
+  const cues = items.flatMap((item, itemIndex) => {
+    const placementMs = item.startMs ?? 0
+
+    return (item.data?.cues ?? []).map((cue, cueIndex) => ({
+      startMs: placementMs + cue.startMs,
+      endMs: placementMs + cue.endMs,
+      text: cue.text,
+      sourceOrder: itemIndex * 1_000_000 + cueIndex,
+    }))
+  })
+
+  return {
+    id: track.id,
+    label: track.label,
+    language: items.find((item) => item.data?.language)?.data?.language,
+    cues,
+  }
 }
 
 function timestamp(milliseconds: number, separator: ',' | '.'): string {
@@ -43,24 +68,23 @@ function timestamp(milliseconds: number, separator: ',' | '.'): string {
     .join(':') + `${separator}${String(millis).padStart(3, '0')}`
 }
 
-function normalizedCues(data: TimelineTextItemData) {
-  return [...(data.cues ?? [])]
-    .map((cue, sourceIndex) => ({
+function normalizedCues(cues: ExportCue[]) {
+  return cues
+    .map((cue) => ({
       ...cue,
-      sourceIndex,
       startMs: Math.max(0, cue.startMs),
       endMs: Math.max(cue.startMs, cue.endMs),
       text: cue.text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim(),
     }))
     .sort((left, right) =>
       left.startMs === right.startMs
-        ? left.sourceIndex - right.sourceIndex
+        ? left.sourceOrder - right.sourceOrder
         : left.startMs - right.startMs,
     )
 }
 
-function serializeSrt(data: TimelineTextItemData): string {
-  return normalizedCues(data)
+function serializeSrt(cues: ExportCue[]): string {
+  return normalizedCues(cues)
     .map(
       (cue, index) =>
         `${index + 1}\n${timestamp(cue.startMs, ',')} --> ${timestamp(cue.endMs, ',')}\n${cue.text}`,
@@ -68,8 +92,8 @@ function serializeSrt(data: TimelineTextItemData): string {
     .join('\n\n') + '\n'
 }
 
-function serializeWebVtt(data: TimelineTextItemData): string {
-  const body = normalizedCues(data)
+function serializeWebVtt(cues: ExportCue[]): string {
+  const body = normalizedCues(cues)
     .map(
       (cue) =>
         `${timestamp(cue.startMs, '.')} --> ${timestamp(cue.endMs, '.')}\n${cue.text}`,
@@ -94,13 +118,21 @@ export function listEditableSubtitleTracks(
   document: SubtitleDocument,
 ): Array<{ id: string; label: string; language?: string }> {
   return document.tracks.flatMap((track) => {
-    const item = track.items.find((candidate) => candidate.data?.mediaType === 'text')
+    const items = track.items.filter(
+      (candidate) => candidate.data?.mediaType === 'text' && Array.isArray(candidate.data.cues),
+    )
 
-    if (!item?.data || !Array.isArray(item.data.cues)) {
+    if (items.length === 0) {
       return []
     }
 
-    return [{ id: track.id, label: track.label, language: item.data.language }]
+    return [
+      {
+        id: track.id,
+        label: track.label,
+        language: items.find((item) => item.data?.language)?.data?.language,
+      },
+    ]
   })
 }
 
@@ -110,7 +142,7 @@ export function exportSubtitleTrack(
   format: SubtitleExportFormat,
 ): SubtitleExport {
   const track = subtitleData(document, trackId)
-  const languageSuffix = track.data.language ? `-${safeFilenamePart(track.data.language)}` : ''
+  const languageSuffix = track.language ? `-${safeFilenamePart(track.language)}` : ''
   const stem = `${safeFilenamePart(track.label)}${languageSuffix}`
 
   switch (format) {
@@ -118,13 +150,13 @@ export function exportSubtitleTrack(
       return {
         filename: `${stem}.srt`,
         mimeType: 'application/x-subrip;charset=utf-8',
-        text: serializeSrt(track.data),
+        text: serializeSrt(track.cues),
       }
     case 'webvtt':
       return {
         filename: `${stem}.vtt`,
         mimeType: 'text/vtt;charset=utf-8',
-        text: serializeWebVtt(track.data),
+        text: serializeWebVtt(track.cues),
       }
   }
 }
