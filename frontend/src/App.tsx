@@ -13,6 +13,7 @@ import {
   createTimelineTextExtension,
   type TimelineTextItemData,
 } from '@moritzbrantner/timeline-editor/text'
+import { SubtitleExportDialog } from './SubtitleExportDialog'
 import {
   buildSubtitleSession,
   createEmptySubtitleDocument,
@@ -42,7 +43,7 @@ type VideoMetadata = {
   durationMs: number
 }
 
-type GeneratedCue = { startMs: number; endMs: number; text: string }
+type GeneratedCue = { startMs: number; endMs: number; text: string; actor?: string }
 type GeneratedTrack = { language: string; pivoted: boolean; cues: GeneratedCue[] }
 type SubtitleJob = {
   jobId: string
@@ -214,6 +215,7 @@ function App() {
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false)
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [isPickingVideo, setIsPickingVideo] = useState(false)
   const [selectedVideo, setSelectedVideo] = useState<LoadedVideo>()
   const [loadWarnings, setLoadWarnings] = useState<LoadWarning[]>([])
@@ -405,6 +407,16 @@ function App() {
               >
                 {isPickingVideo ? 'Opening…' : 'Open video…'}
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIsFileMenuOpen(false)
+                  setIsExportDialogOpen(true)
+                }}
+              >
+                Export subtitles…
+              </button>
             </div>
           ) : null}
         </nav>
@@ -499,6 +511,13 @@ function App() {
           />
         </section>
       </div>
+
+      <SubtitleExportDialog
+        open={isExportDialogOpen}
+        document={document}
+        selectedTrackIds={selection.trackIds}
+        onClose={() => setIsExportDialogOpen(false)}
+      />
     </main>
   )
 }
