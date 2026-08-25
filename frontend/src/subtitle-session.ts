@@ -18,7 +18,7 @@ function getLastCueEndMs(asset: SubtitleAsset): number {
   return Math.max(0, ...(asset.data?.cues ?? []).map((cue) => cue.endMs))
 }
 
-function getSpeakerSummary(asset: SubtitleAsset): string | undefined {
+function getSpeakers(asset: SubtitleAsset): string[] {
   const speakers: string[] = []
   const seen = new Set<string>()
 
@@ -31,6 +31,10 @@ function getSpeakerSummary(asset: SubtitleAsset): string | undefined {
     }
   }
 
+  return speakers
+}
+
+function getSpeakerSummary(speakers: string[]): string | undefined {
   if (speakers.length === 0) {
     return undefined
   }
@@ -41,8 +45,8 @@ function getSpeakerSummary(asset: SubtitleAsset): string | undefined {
   return remaining > 0 ? `${visible.join(', ')} +${remaining}` : visible.join(', ')
 }
 
-function getTrackLabel(asset: SubtitleAsset): string {
-  const speakerSummary = getSpeakerSummary(asset)
+function getTrackLabel(asset: SubtitleAsset, speakers: string[]): string {
+  const speakerSummary = getSpeakerSummary(speakers)
   return speakerSummary ? `${asset.label} · ${speakerSummary}` : asset.label
 }
 
@@ -52,7 +56,8 @@ export function buildSubtitleSession(
 ): SubtitleSession {
   const tracks = assets.map((asset) => {
     const trackId = `subtitle-${asset.id}`
-    const trackLabel = getTrackLabel(asset)
+    const speakers = getSpeakers(asset)
+    const trackLabel = getTrackLabel(asset, speakers)
 
     return {
       id: trackId,
@@ -60,6 +65,10 @@ export function buildSubtitleSession(
       kind: 'text',
       acceptsItemKinds: ['text', 'subtitle', 'caption'],
       height: 72,
+      data: {
+        exportLabel: asset.label,
+        speakers,
+      },
       items: [
         {
           id: `${asset.id}-item`,
