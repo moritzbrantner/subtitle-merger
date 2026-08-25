@@ -85,7 +85,10 @@ mod tests {
 
     #[test]
     fn lifecycle_contract_serializes_to_stable_camel_case_values() {
-        assert_eq!(serde_json::to_string(&JobState::Queued).unwrap(), "\"queued\"");
+        assert_eq!(
+            serde_json::to_string(&JobState::Queued).unwrap(),
+            "\"queued\""
+        );
         assert_eq!(
             serde_json::to_string(&JobPhase::DetectingSpeech).unwrap(),
             "\"detectingSpeech\""

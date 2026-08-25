@@ -230,9 +230,15 @@ fn app_with_state(state: AppState) -> Router {
         .route("/api/subtitles/{id}", get(get_subtitle_text))
         .route("/api/generation-preflight", get(generation::preflight))
         .route("/api/subtitle-sessions", post(generation::create_session))
-        .route("/api/subtitle-sessions/{id}", delete(generation::delete_session))
+        .route(
+            "/api/subtitle-sessions/{id}",
+            delete(generation::delete_session),
+        )
         .route("/api/subtitle-jobs", post(generation::create_job))
-        .route("/api/subtitle-jobs/{id}", get(generation::get_job).delete(generation::cancel_job))
+        .route(
+            "/api/subtitle-jobs/{id}",
+            get(generation::get_job).delete(generation::cancel_job),
+        )
         .route("/api/subtitle-jobs/{id}/events", get(generation::events))
         .with_state(state)
         .layer(
