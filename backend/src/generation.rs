@@ -14,9 +14,9 @@ use native_whisperx::{
     run_with_control, translate_transcription_with_control, CancellationHandle,
     FiniteTranscriptionOutcome, InputSource, NativeOpusMtTranslationProvider,
     NativeOpusMtTranslationProviderConfig, NativeWhisperxConfig, OutputConfig,
-    TranscribedTranscriptionOutcome, TranscriptionContract, TranscriptionPipelineResponse,
-    TranscriptionProgressEvent, TranscriptionProgressObserver, TranslatedTranscriptionOutcome,
-    TranslationPlan, TranslationPlanProvenance,
+    TranscriptionContract, TranscriptionPipelineResponse, TranscriptionProgressEvent,
+    TranscriptionProgressObserver, TranslatedTranscriptionOutcome, TranslationPlan,
+    TranslationPlanProvenance,
 };
 
 use crate::{AppError, AppState};
@@ -406,8 +406,9 @@ fn run_native_job(
                     TranslationAttempt::Cancelled => NativeJobResult::Cancelled {
                         source_track: Some(source_track),
                     },
-                    TranslationAttempt::Failed(message) => NativeJobResult::Failed {
-                        source_track: Some(source_track),
+                    TranslationAttempt::Failed(message) => NativeJobResult::Completed {
+                        source_track,
+                        translation_track: None,
                         message: format!("source subtitles generated; translation failed: {message}"),
                     },
                 },
