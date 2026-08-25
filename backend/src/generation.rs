@@ -1,25 +1,28 @@
 use std::{collections::HashMap, env, path::PathBuf, process::Command, sync::Arc};
 
 use axum::{
+    Json,
     extract::{Multipart, Path, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    Json,
 };
 use serde::Serialize;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
 use native_whisperx::{
-    run_with_control, translate_transcription_with_control, CancellationHandle,
-    FiniteTranscriptionOutcome, InputSource, NativeOpusMtTranslationProvider,
+    CancellationHandle, FiniteTranscriptionOutcome, InputSource, NativeOpusMtTranslationProvider,
     NativeOpusMtTranslationProviderConfig, NativeWhisperxConfig, OutputConfig,
     TranscriptionContract, TranscriptionPipelineResponse, TranscriptionProgressEvent,
     TranscriptionProgressObserver, TranslatedTranscriptionOutcome, TranslationPlan,
-    TranslationPlanProvenance,
+    TranslationPlanProvenance, run_with_control, translate_transcription_with_control,
 };
 
 use crate::{AppError, AppState};
+
+mod contracts;
+
+use contracts::{JobPhase, JobProgress, JobState, phase_for_event};
 
 const DEFAULT_MAX_UPLOAD_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 
@@ -42,8 +45,8 @@ struct Inner {
 pub struct Job {
     job_id: String,
     session_id: String,
-    state: String,
-    phase: String,
+    state: JobState,
+    phase: JobPhase,
     progress: u8,
     message: String,
     source_track: Option<Track>,
@@ -229,7 +232,9 @@ pub async fn create_job(
                     .await
                     .map_err(|_| AppError::bad_request("video upload failed"))?;
                 if bytes.len() as u64 > state.max_upload_bytes {
-                    return Err(AppError::bad_request("video exceeds configured upload limit"));
+                    return Err(AppError::bad_request(
+                        "video exceeds configured upload limit",
+                    ));
                 }
                 video = Some(bytes);
             }
@@ -262,8 +267,8 @@ pub async fn create_job(
     let job = Job {
         job_id: id.clone(),
         session_id,
-        state: "queued".to_string(),
-        phase: "queued".to_string(),
+        state: JobState::Queued,
+        phase: JobPhase::Queued,
         progress: 0,
         message: "subtitle generation queued".to_string(),
         source_track: None,
@@ -326,7 +331,8 @@ pub async fn cancel_job(
 pub async fn events(
     State(app): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, std::convert::Infallible>>>, AppError> {
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, std::convert::Infallible>>>, AppError>
+{
     let sender = app
         .generation
         .events
@@ -374,7 +380,7 @@ fn run_native_job(
     let mut observer = SseObserver {
         sender: sender.clone(),
     };
-    let _ = sender.send("{\"state\":\"running\",\"phase\":\"transcribing\"}".to_string());
+    send_progress(&sender, JobPhase::Transcribing);
 
     let result = match run_with_control(config, &mut observer, &cancellation) {
         Ok(FiniteTranscriptionOutcome::Completed(report)) => {
@@ -394,11 +400,13 @@ fn run_native_job(
                     &mut observer,
                     &cancellation,
                 ) {
-                    TranslationAttempt::Completed(translation_track) => NativeJobResult::Completed {
-                        source_track,
-                        translation_track: Some(translation_track),
-                        message: "source and translated subtitles generated".to_string(),
-                    },
+                    TranslationAttempt::Completed(translation_track) => {
+                        NativeJobResult::Completed {
+                            source_track,
+                            translation_track: Some(translation_track),
+                            message: "source and translated subtitles generated".to_string(),
+                        }
+                    }
                     TranslationAttempt::SkippedSameLanguage => NativeJobResult::Completed {
                         source_track,
                         translation_track: None,
@@ -411,14 +419,16 @@ fn run_native_job(
                     TranslationAttempt::Failed(message) => NativeJobResult::Completed {
                         source_track,
                         translation_track: None,
-                        message: format!("source subtitles generated; translation failed: {message}"),
+                        message: format!(
+                            "source subtitles generated; translation failed: {message}"
+                        ),
                     },
                 },
             }
         }
-        Ok(FiniteTranscriptionOutcome::Cancelled(_)) => NativeJobResult::Cancelled {
-            source_track: None,
-        },
+        Ok(FiniteTranscriptionOutcome::Cancelled(_)) => {
+            NativeJobResult::Cancelled { source_track: None }
+        }
         Err(error) => NativeJobResult::Failed {
             source_track: None,
             message: error.to_string(),
@@ -437,16 +447,16 @@ fn run_native_job(
                 translation_track,
                 message,
             } => {
-                job.state = "completed".to_string();
-                job.phase = "completed".to_string();
+                job.state = JobState::Completed;
+                job.phase = JobPhase::Completed;
                 job.progress = 100;
                 job.message = message;
                 job.source_track = Some(source_track);
                 job.translation_track = translation_track;
             }
             NativeJobResult::Cancelled { source_track } => {
-                job.state = "cancelled".to_string();
-                job.phase = "cancelled".to_string();
+                job.state = JobState::Cancelled;
+                job.phase = JobPhase::Cancelled;
                 job.message = "generation cancelled".to_string();
                 job.source_track = source_track;
             }
@@ -454,16 +464,17 @@ fn run_native_job(
                 source_track,
                 message,
             } => {
-                job.state = "failed".to_string();
-                job.phase = "failed".to_string();
+                job.state = JobState::Failed;
+                job.phase = JobPhase::Failed;
                 job.message = message;
                 job.source_track = source_track;
             }
         }
-        let payload = serde_json::to_string(&*job)
-            .unwrap_or_else(|_| "{\"state\":\"failed\"}".to_string());
+        let payload = serde_json::to_string(&*job).ok();
         inner.active_job = None;
-        let _ = sender.send(payload);
+        if let Some(payload) = payload {
+            let _ = sender.send(payload);
+        }
     });
 }
 
@@ -490,10 +501,11 @@ fn translate_track(
         Ok(plan) => plan,
         Err(error) => return TranslationAttempt::Failed(error.to_string()),
     };
-    let mut provider = NativeOpusMtTranslationProvider::new(NativeOpusMtTranslationProviderConfig {
-        model_dir: Some(cache_dir.clone()),
-        ..Default::default()
-    });
+    let mut provider =
+        NativeOpusMtTranslationProvider::new(NativeOpusMtTranslationProviderConfig {
+            model_dir: Some(cache_dir.clone()),
+            ..Default::default()
+        });
     match translate_transcription_with_control(
         response,
         &plan,
@@ -540,15 +552,21 @@ fn track_from_transcript(transcript: &TranscriptionContract, pivoted: bool) -> T
     }
 }
 
+fn send_progress(sender: &broadcast::Sender<String>, phase: JobPhase) {
+    if let Ok(payload) = serde_json::to_string(&JobProgress::running(phase)) {
+        let _ = sender.send(payload);
+    }
+}
+
 struct SseObserver {
     sender: broadcast::Sender<String>,
 }
 
 impl TranscriptionProgressObserver for SseObserver {
     fn observe(&mut self, event: TranscriptionProgressEvent) {
-        let _ = self.sender.send(
-            serde_json::json!({ "state": "running", "phase": format!("{event:?}") }).to_string(),
-        );
+        if let Some(phase) = phase_for_event(&event) {
+            send_progress(&self.sender, phase);
+        }
     }
 }
 

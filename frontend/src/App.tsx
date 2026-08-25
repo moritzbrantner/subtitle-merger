@@ -15,6 +15,17 @@ import {
 } from '@moritzbrantner/timeline-editor/text'
 import { SubtitleExportDialog } from './SubtitleExportDialog'
 import {
+  startSubtitleGeneration,
+  subscribeSubtitleJob,
+  type SubtitleJobSubscription,
+} from './generation/client'
+import {
+  formatSubtitleJobPhase,
+  type GeneratedTrack,
+  type SubtitleJob,
+  type SubtitleJobUpdate,
+} from './generation/types'
+import {
   buildSubtitleSession,
   createEmptySubtitleDocument,
   type SubtitleAsset,
@@ -22,7 +33,6 @@ import {
 } from './subtitle-session'
 import {
   loadSubtitleAssets,
-  readApiError,
   requestVideoPick,
   type LoadedVideo,
   type LoadWarning,
@@ -41,18 +51,6 @@ type ReferenceVideo = {
 
 type VideoMetadata = {
   durationMs: number
-}
-
-type GeneratedCue = { startMs: number; endMs: number; text: string; actor?: string }
-type GeneratedTrack = { language: string; pivoted: boolean; cues: GeneratedCue[] }
-type SubtitleJob = {
-  jobId: string
-  state: string
-  phase: string
-  progress: number
-  message: string
-  sourceTrack?: GeneratedTrack
-  translationTrack?: GeneratedTrack
 }
 
 const defaultTransportState: TimelineWorkbenchTransportState = {
@@ -223,7 +221,7 @@ function App() {
   const [diarize, setDiarize] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationMessage, setGenerationMessage] = useState<string>()
-  const jobEventsRef = useRef<EventSource | null>(null)
+  const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -292,57 +290,17 @@ function App() {
     setGenerationMessage('Preparing subtitle generation…')
 
     try {
-      const sessionResponse = await fetch('/api/subtitle-sessions', { method: 'POST' })
-
-      if (!sessionResponse.ok) {
-        throw new Error('Could not create subtitle session.')
-      }
-
-      const { sessionId } = (await sessionResponse.json()) as { sessionId: string }
-      const videoResponse = await fetch(selectedVideo.mediaUrl)
-
-      if (!videoResponse.ok) {
-        throw new Error(await readApiError(videoResponse))
-      }
-
-      const videoBlob = await videoResponse.blob()
-      const form = new FormData()
-      form.set('sessionId', sessionId)
-      form.set(
-        'video',
-        new File([videoBlob], selectedVideo.filename, {
-          type: selectedVideo.mimeType || videoBlob.type,
-        }),
-      )
-      if (targetLanguage) {
-        form.set('targetLanguage', targetLanguage)
-      }
-      form.set('qualityProfile', 'balanced')
-      form.set('diarize', String(diarize))
-      const response = await fetch('/api/subtitle-jobs', { method: 'POST', body: form })
-      const job = (await response.json()) as SubtitleJob
-
-      if (!response.ok) {
-        throw new Error(job.message ?? 'Could not start subtitle generation.')
-      }
-
-      setGenerationMessage(job.message ?? 'Subtitle generation started.')
-      jobEventsRef.current?.close()
-      const events = new EventSource(`/api/subtitle-jobs/${job.jobId}/events`)
-      events.addEventListener('progress', (event) => {
-        try {
-          applySubtitleJob(JSON.parse((event as MessageEvent<string>).data) as SubtitleJob)
-        } catch {
-          setGenerationMessage('Subtitle generation is running…')
-        }
+      const job = await startSubtitleGeneration({
+        video: selectedVideo,
+        targetLanguage: targetLanguage || undefined,
+        diarize,
       })
-      events.onerror = () => {
-        events.close()
-        void fetch(`/api/subtitle-jobs/${job.jobId}`)
-          .then((result) => result.ok ? result.json() : undefined)
-          .then((snapshot) => { if (snapshot) applySubtitleJob(snapshot as SubtitleJob) })
-      }
-      jobEventsRef.current = events
+
+      setGenerationMessage(job.message)
+      jobEventsRef.current?.close()
+      jobEventsRef.current = subscribeSubtitleJob(job.jobId, applySubtitleJobUpdate, {
+        onProtocolError: () => setGenerationMessage('Subtitle generation is running…'),
+      })
     } catch (error) {
       setGenerationMessage(
         error instanceof Error ? error.message : 'Could not start subtitle generation.',
@@ -352,10 +310,21 @@ function App() {
     }
   }
 
+  function applySubtitleJobUpdate(update: SubtitleJobUpdate) {
+    if (update.kind === 'progress') {
+      setGenerationMessage(`${formatSubtitleJobPhase(update.progress.phase)}…`)
+      return
+    }
+
+    applySubtitleJob(update.job)
+  }
+
   function applySubtitleJob(job: SubtitleJob) {
-    setGenerationMessage(job.message || `${job.phase}…`)
+    setGenerationMessage(job.message || `${formatSubtitleJobPhase(job.phase)}…`)
+    if (job.state === 'completed' || job.state === 'cancelled' || job.state === 'failed') {
+      jobEventsRef.current?.close()
+    }
     if (job.state !== 'completed') return
-    jobEventsRef.current?.close()
     const tracks = [
       job.sourceTrack ? { track: job.sourceTrack, label: 'Subtitles', color: '#2fbf71' } : undefined,
       job.translationTrack ? { track: job.translationTrack, label: 'Translation', color: '#c084fc' } : undefined,
