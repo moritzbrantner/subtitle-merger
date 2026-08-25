@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@moritzbrantner/timeline-editor": "^1.0.1",
+    "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#df015317e6f97a4e1ccdd9dcc9deaf536441f73c",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
