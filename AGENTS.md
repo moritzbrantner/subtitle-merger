@@ -1,24 +1,33 @@
 # Agent instructions
 
-## Working rules
+## Applicable convention stack
 
-- Read `docs/adr/0003-released-native-whisperx-boundary.md` before changing transcription or translation integration.
-- Use source development mode when Subtitle Merger needs unreleased Native WhisperX or audio-stack behavior.
-- Do not publish Cargo or npm packages merely to unblock application work.
-- Treat Subtitle Merger as the vertical consumer: drive Native WhisperX changes from concrete editor and subtitle workflows.
-- Keep a normal task to this repository plus at most two upstream repositories unless broader migration scope was explicitly assigned.
-- Keep application-local frontend packages source-local; npm publication is not part of ordinary development.
-- Registry-only Native WhisperX resolution is required for release, not for source-mode feature evidence.
+Apply the shared conventions from `moritzbrantner/coding-agent-conventions` without copying them here:
 
-## Agent skills
+- `principles/`
+- `conventions/agents/`
+- `conventions/dependencies/`
+- `conventions/environment/`
+- `conventions/interface-design/`
+- `conventions/repository/`
+- `conventions/testing/`
+- `technologies/rust/`
+- `technologies/typescript/`
+- `technologies/typescript/react/`
+- `technologies/typescript/react/moritzbrantner-ui/`
+- `technologies/tooling/` plus `vite/`, `vitest/`, and `playwright/`
 
-This repository is configured for the Matt Pocock workflow skills and the agent-loop control plane.
+Repository-local rules below override only where they conflict.
 
-- Issue tracker: `docs/agents/issue-tracker.md`
-- Triage labels: `docs/agents/triage-labels.md`
-- Domain context: `docs/agents/domain.md`
-- Planning workflow: `docs/agents/planning-workflow.md`
+## Repository-specific rules
 
-### Planning workflow
+- Treat Subtitle Merger as the vertical consumer: upstream Native WhisperX or audio-stack work must be driven by a concrete editor or subtitle workflow.
+- Read `docs/adr/0003-released-native-whisperx-boundary.md` before changing transcription, translation, or their source dependency boundary.
+- Host-native development is canonical because the product uses native file picking, local media/model caches, and optional local GPU resources. Containers are optional verification tools, not the source of truth for the development environment.
+- Keep the development loop usable directly from the repository. GitHub issues and the agent-loop are optional orchestration adapters, not prerequisites for implementation.
 
-Substantial new work should be planned into GitHub PRD issues instead of implemented directly. See `docs/agents/planning-workflow.md`.
+## Repository context
+
+- Domain vocabulary: `CONTEXT.md`
+- Architectural decisions: `docs/adr/`
+- Optional GitHub/orchestrator workflow: `docs/agents/`

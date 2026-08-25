@@ -1,16 +1,13 @@
 # Planning Workflow
 
-This repository uses the canonical agent-loop setup for generic planning workflow rules. See `~/.codex/skills/moenarch-setup-agent-loop-skills/planning-workflow.md`.
+The repository development loop is independent of orchestration. A direct local or hosted implementation task may work from a bounded user request without first creating GitHub planning artifacts.
 
-Repo-specific facts stay in `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
+When the agent-loop is used, GitHub provides the durable queue and the installed agent-loop skills provide the orchestration procedure. Repository-specific facts stay in `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
 
-Summary:
+For orchestrated work:
 
-- GitHub Issues are the durable work queue.
-- Substantial work starts as a PRD issue labeled `prd` and `ready-for-agent`.
-- Implementation slice issues must include a `## Parent` link to their parent PRD before they receive `ready-for-agent`.
-- The agent-loop handles slicing and routing after the PRD is ready.
+- Use a PRD issue when durable multi-slice planning is useful.
+- Implementation slice issues should link their parent PRD before receiving `ready-for-agent`.
+- The agent-loop may slice and route ready work, but it does not redefine repository completion gates.
 
-## Model policy
-
-Agent-loop workers use the hosted model policy from the installed `moenarch-agent-loop` skill. See `~/.codex/skills/moenarch-agent-loop/references/model-policy.md`.
+Do not make a particular local skill path, hosted model policy, GitHub issue state, or orchestrator runtime a prerequisite for ordinary repository development.

@@ -23,6 +23,7 @@ pnpm-debug.log*
 
 # Downloaded end-to-end media fixture
 /e2e/fixtures/*.mp4
+/.tmp-playwright/
 /test-results/
 /playwright-report/
 /blob-report/
