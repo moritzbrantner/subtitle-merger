@@ -1471,9 +1471,9 @@ dependencies = [
 
 [[package]]
 name = "moenarch-audio-analysis-io"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "545e748139115b7a48e1257e035ad45619d553ccfd2b37876194c358aae8d336"
+checksum = "0c17eb841aa6b7129214c8044a471ecc45035046f4ac31636de525e150509995"
 dependencies = [
  "hound",
  "moenarch-audio-analysis-core",
@@ -1517,13 +1517,14 @@ dependencies = [
 
 [[package]]
 name = "moenarch-audio-analysis-transcription"
-version = "0.1.12"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c32db42e5d9d548bf92b3976ba20dfa3ae61cc0d5844cf352853d8b4e04d11e2"
+checksum = "4478c444102845140bd0d5c713365948a485acc6a074f24f10380dba962d44c6"
 dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "flate2",
  "hound",
  "moenarch-audio-analysis-io",
  "moenarch-audio-analysis-speakers",
@@ -1532,6 +1533,8 @@ dependencies = [
  "moenarch-text-model-runtime",
  "moenarch-text-transcripts",
  "moenarch-video-analysis-core",
+ "rayon",
+ "rustfft",
  "serde",
  "serde_json",
  "tokenizers",
@@ -1695,9 +1698,9 @@ dependencies = [
 
 [[package]]
 name = "moenarch-video-analysis-ffmpeg"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd4f9a23ad0a8680d0de27ec8b2bf6ea75bfba85f30a9fa51eb4417741039699"
+checksum = "6f56edd02f2fe5ddf958cbbec2c78b1018f03a3a44e542f3b380c3ea205eea15"
 dependencies = [
  "moenarch-runtime-core",
  "moenarch-video-analysis-core",
@@ -1761,22 +1764,24 @@ dependencies = [
 [[package]]
 name = "native-whisperx"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "908b1a3deeab2c6e2570183b1be774c95732c70de2506100f39debcfd2494143"
+source = "git+https://github.com/moritzbrantner/native-whisperx?rev=ea3f5bb8ecb40252f8b6cc36805bc65419cdc21c#ea3f5bb8ecb40252f8b6cc36805bc65419cdc21c"
 dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
  "dirs",
+ "moenarch-audio-analysis-io",
  "moenarch-audio-analysis-speakers",
  "moenarch-audio-analysis-transcription",
  "moenarch-model-runtime",
  "moenarch-text-model-runtime",
  "moenarch-text-transcripts",
  "moenarch-video-analysis-core",
+ "moenarch-video-analysis-ffmpeg",
  "sentencepiece-rs",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
 ]
 
