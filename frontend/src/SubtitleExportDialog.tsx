@@ -38,6 +38,11 @@ export function SubtitleExportDialog({
   const trackSelectRef = useRef<HTMLSelectElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const wasOpenRef = useRef(false)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current
@@ -65,7 +70,11 @@ export function SubtitleExportDialog({
       return
     }
 
-    const previousFocus = window.document.activeElement as HTMLElement | null
+    const activeElement = window.document.activeElement
+    const previousFocus =
+      activeElement instanceof HTMLElement && activeElement !== window.document.body
+        ? activeElement
+        : null
     const overlay = overlayRef.current
     const siblings = overlay?.parentElement
       ? Array.from(overlay.parentElement.children).filter((element) => element !== overlay)
@@ -76,15 +85,14 @@ export function SubtitleExportDialog({
       ;(element as HTMLElement).inert = true
     }
 
-    const focusInitialControl = () => {
+    const focusFrame = window.requestAnimationFrame(() => {
       ;(trackSelectRef.current ?? closeButtonRef.current)?.focus()
-    }
-    window.requestAnimationFrame(focusInitialControl)
+    })
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
 
@@ -120,7 +128,7 @@ export function SubtitleExportDialog({
     window.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      window.cancelAnimationFrame(window.requestAnimationFrame(() => undefined))
+      window.cancelAnimationFrame(focusFrame)
       window.removeEventListener('keydown', handleKeyDown)
       for (const [element, inert] of previousInert) {
         ;(element as HTMLElement).inert = inert
@@ -131,7 +139,7 @@ export function SubtitleExportDialog({
         : window.document.querySelector<HTMLElement>('button[aria-controls="file-menu"]')
       restoreTarget?.focus()
     }
-  }, [onClose, open])
+  }, [open])
 
   if (!open) {
     return null
