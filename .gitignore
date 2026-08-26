@@ -21,8 +21,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Downloaded end-to-end media fixture
+# Generated end-to-end media fixtures
 /e2e/fixtures/*.mp4
+/e2e/fixtures/*.webm
 /.tmp-playwright/
 /test-results/
 /playwright-report/
