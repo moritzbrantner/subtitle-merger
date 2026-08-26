@@ -6,12 +6,19 @@ import { defineConfig } from 'vite'
 const timelineEditorSource = fileURLToPath(
   new URL('../node_modules/@moritzbrantner/timeline-editor/src/', import.meta.url),
 )
+const editorCoreSource = fileURLToPath(
+  new URL('../.acceptance-sources/editor-core/src/', import.meta.url),
+)
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: [
+      {
+        find: '@moritzbrantner/editor-core/react',
+        replacement: `${editorCoreSource}react.tsx`,
+      },
       {
         find: '@moritzbrantner/timeline-editor/text',
         replacement: `${timelineEditorSource}text.ts`,
@@ -23,7 +30,11 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['@moritzbrantner/timeline-editor', '@moritzbrantner/timeline-editor/text'],
+    exclude: [
+      '@moritzbrantner/editor-core/react',
+      '@moritzbrantner/timeline-editor',
+      '@moritzbrantner/timeline-editor/text',
+    ],
   },
   server: {
     proxy: {
