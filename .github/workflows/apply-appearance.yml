@@ -1,0 +1,95 @@
+name: Apply appearance theming
+
+on:
+  push:
+    branches: [feature/appearance-themes]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      - name: Apply appearance preference and semantic tokens
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) < count:
+                  raise SystemExit(f'{path}: missing expected text: {old!r}')
+              file.write_text(text.replace(old, new, count))
+
+          localization = Path('frontend/src/localization.ts')
+          text = localization.read_text()
+          text = text.replace(
+              '  language: string\n  automaticSubtitles: string',
+              '  language: string\n  appearance: string\n  appearanceSystem: string\n  appearanceLight: string\n  appearanceDark: string\n  automaticSubtitles: string',
+              1,
+          )
+          text = text.replace(
+              "    language: 'Language',\n    automaticSubtitles:",
+              "    language: 'Language',\n    appearance: 'Appearance',\n    appearanceSystem: 'System',\n    appearanceLight: 'Light',\n    appearanceDark: 'Dark',\n    automaticSubtitles:",
+              1,
+          )
+          text = text.replace(
+              "    language: 'Sprache',\n    automaticSubtitles:",
+              "    language: 'Sprache',\n    appearance: 'Darstellung',\n    appearanceSystem: 'System',\n    appearanceLight: 'Hell',\n    appearanceDark: 'Dunkel',\n    automaticSubtitles:",
+              1,
+          )
+          text = text.replace(
+              "    language: 'Idioma',\n    automaticSubtitles:",
+              "    language: 'Idioma',\n    appearance: 'Apariencia',\n    appearanceSystem: 'Sistema',\n    appearanceLight: 'Claro',\n    appearanceDark: 'Oscuro',\n    automaticSubtitles:",
+              1,
+          )
+          localization.write_text(text)
+
+          app = Path('frontend/src/App.tsx')
+          text = app.read_text()
+          text = text.replace(
+              "import { getFitTimelinePixelsPerSecond } from './timeline-viewport'",
+              "import { getFitTimelinePixelsPerSecond } from './timeline-viewport'\nimport {\n  appearances,\n  applyAppearance,\n  getPreferredAppearance,\n  type Appearance,\n} from './appearance'",
+              1,
+          )
+          text = text.replace(
+              "  const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())\n  const messages",
+              "  const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())\n  const [appearance, setAppearance] = useState<Appearance>(() => getPreferredAppearance())\n  const messages",
+              1,
+          )
+          text = text.replace(
+              "  useEffect(() => {\n    persistLocale(locale)\n  }, [locale])",
+              "  useEffect(() => {\n    persistLocale(locale)\n  }, [locale])\n\n  useEffect(() => applyAppearance(appearance), [appearance])",
+              1,
+          )
+          text = text.replace(
+              '''        <label className="locale-select">\n          <span>{messages.language}</span>\n          <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>\n            {supportedLocales.map((candidate) => (\n              <option key={candidate} value={candidate}>\n                {formatLanguageName(candidate, candidate)}\n              </option>\n            ))}\n          </select>\n        </label>''',
+              '''        <div className="editor-preferences">\n          <label className="preference-select">\n            <span>{messages.language}</span>\n            <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>\n              {supportedLocales.map((candidate) => (\n                <option key={candidate} value={candidate}>\n                  {formatLanguageName(candidate, candidate)}\n                </option>\n              ))}\n            </select>\n          </label>\n          <label className="preference-select">\n            <span>{messages.appearance}</span>\n            <select\n              value={appearance}\n              onChange={(event) => setAppearance(event.currentTarget.value as Appearance)}\n            >\n              {appearances.map((candidate) => (\n                <option key={candidate} value={candidate}>\n                  {candidate === 'system'\n                    ? messages.appearanceSystem\n                    : candidate === 'light'\n                      ? messages.appearanceLight\n                      : messages.appearanceDark}\n                </option>\n              ))}\n            </select>\n          </label>\n        </div>''',
+              1,
+          )
+          app.write_text(text)
+
+          Path('frontend/src/index.css').write_text(''':root {\n  font-family:\n    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",\n    sans-serif;\n  font-synthesis: none;\n  text-rendering: optimizeLegibility;\n  -webkit-font-smoothing: antialiased;\n  -moz-osx-font-smoothing: grayscale;\n  color-scheme: light;\n  --app-bg: #f7f8f5;\n  --surface: #ffffff;\n  --surface-raised: #f1f4f1;\n  --input-bg: #ffffff;\n  --text: #17201c;\n  --text-soft: #39443f;\n  --muted: #68736d;\n  --border: rgba(23, 32, 28, 0.16);\n  --border-strong: #a9b2ad;\n  --accent: #215f9d;\n  --accent-strong: #174d82;\n  --accent-subtle: rgba(33, 95, 157, 0.11);\n  --focus: rgba(33, 95, 157, 0.34);\n  --error-bg: #fff0f0;\n  --error-border: #d98b8b;\n  --error-text: #7f2020;\n  --warning-bg: #fff8e6;\n  --warning-border: #d2aa50;\n  --warning-text: #694b0d;\n  --info-bg: #edf5ff;\n  --info-border: #8bb5df;\n  --info-text: #174d82;\n  --overlay: rgba(15, 18, 23, 0.56);\n  --shadow: rgba(20, 28, 24, 0.18);\n  --video-bg: #000000;\n  color: var(--text);\n  background: var(--app-bg);\n}\n\n:root[data-theme='dark'] {\n  color-scheme: dark;\n  --app-bg: #101114;\n  --surface: #181a1f;\n  --surface-raised: #20232a;\n  --input-bg: #0f1217;\n  --text: #f5f7fa;\n  --text-soft: #d7dce4;\n  --muted: #98a2b3;\n  --border: rgba(255, 255, 255, 0.12);\n  --border-strong: #4b5565;\n  --accent: #56a3ff;\n  --accent-strong: #1d5f9f;\n  --accent-subtle: rgba(86, 163, 255, 0.18);\n  --focus: rgba(86, 163, 255, 0.32);\n  --error-bg: rgba(110, 24, 24, 0.42);\n  --error-border: rgba(255, 110, 110, 0.45);\n  --error-text: #ffd5d5;\n  --warning-bg: rgba(105, 72, 10, 0.35);\n  --warning-border: rgba(245, 190, 72, 0.42);\n  --warning-text: #ffe8ad;\n  --info-bg: rgba(29, 95, 159, 0.2);\n  --info-border: rgba(86, 163, 255, 0.32);\n  --info-text: #d5e8ff;\n  --overlay: rgba(0, 0, 0, 0.62);\n  --shadow: rgba(0, 0, 0, 0.48);\n}\n\n* {\n  box-sizing: border-box;\n}\n\nbody {\n  margin: 0;\n  background: var(--app-bg);\n}\n''')
+
+          Path('frontend/src/App.css').write_text('''.editor-shell {\n  min-height: 100vh;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  gap: 12px;\n  padding: 16px;\n  background: var(--app-bg);\n  color: var(--text);\n}\n\n.editor-topbar {\n  min-height: 64px;\n  display: flex;\n  align-items: center;\n  gap: 16px;\n  padding: 12px 16px;\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  background: var(--surface);\n}\n\n.editor-title { flex: 0 0 auto; min-width: 0; }\n.eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }\nh1 { margin: 0; color: var(--text); font-size: 1.2rem; line-height: 1.2; }\n.menu-bar { position: relative; display: inline-flex; margin-left: 12px; }\n.menu-trigger, .menu-items button { border: 0; color: var(--text); font: inherit; font-size: 0.9rem; cursor: pointer; }\n.menu-trigger { min-height: 36px; padding: 0 12px; border-radius: 5px; background: transparent; font-weight: 700; }\n.menu-trigger:hover, .menu-trigger[aria-expanded='true'] { background: var(--accent-subtle); }\n.menu-trigger:focus-visible, .menu-items button:focus-visible, .preference-select select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }\n.menu-items { position: absolute; z-index: 1; top: calc(100% + 4px); left: 0; min-width: 180px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); box-shadow: 0 10px 24px var(--shadow); }\n.menu-items button { display: block; width: 100%; min-height: 34px; padding: 0 10px; border-radius: 4px; background: transparent; text-align: left; }\n.menu-items button:hover { background: var(--accent-subtle); }\n.load-error, .load-warning, .empty-state { padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; }\n.load-error { border: 1px solid var(--error-border); background: var(--error-bg); color: var(--error-text); }\n.load-warning { border: 1px solid var(--warning-border); background: var(--warning-bg); color: var(--warning-text); }\n.load-warning ul { margin: 0; padding-left: 20px; }\n.empty-state { border: 1px solid var(--info-border); background: var(--info-bg); color: var(--info-text); }\n.editor-content { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; }\n.generation-panel, .reference-preview { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }\n.generation-panel { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 14px 16px; }\n.generation-panel h2, .generation-panel p { margin: 0; }\n.generation-panel > div { margin-right: auto; }\n.generation-panel > div > p:last-child, .generation-status { color: var(--muted); font-size: 0.88rem; }\n.generation-panel label { display: grid; gap: 4px; color: var(--text-soft); font-size: 0.85rem; }\n.generation-panel select, .preference-select select { min-height: 36px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--input-bg); color: var(--text); font: inherit; }\n.generation-panel .checkbox-label { display: flex; align-items: center; min-height: 36px; gap: 7px; }\n.generate-button { min-height: 38px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-strong); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }\n.generate-button:disabled { cursor: progress; opacity: 0.65; }\n.generation-status { width: 100%; }\n.reference-preview { display: grid; gap: 8px; padding: 14px 16px; }\n.reference-preview-heading h2 { margin: 0; font-size: 1rem; }\n.reference-video { display: block; width: min(100%, 960px); max-height: 42vh; margin: 0 auto; background: var(--video-bg); }\n.editor-workbench { min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }\n.editor-workbench > [data-slot='timeline-workbench'] { height: 100%; }\n.editor-workbench [data-slot='timeline-workbench-toolbar'] [role='slider'] { flex: 0 0 8rem; width: 8rem; min-width: 8rem; }\n.editor-preferences { display: flex; align-items: end; gap: 8px; margin-left: auto; }\n.preference-select { display: inline-grid; gap: 3px; color: var(--muted); font-size: 0.72rem; font-weight: 700; }\n.preference-select select { min-height: 34px; }\n\n@media (max-width: 720px) {\n  .editor-shell { padding: 10px; }\n  .editor-topbar { align-items: stretch; flex-direction: column; }\n  .menu-bar { margin-left: 0; }\n  .editor-preferences { margin-left: 0; align-items: stretch; }\n  .preference-select { flex: 1; }\n}\n''')
+
+          Path('frontend/src/SubtitleExportDialog.css').write_text('''.subtitle-export-overlay { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--overlay); }\n.subtitle-export-dialog { width: min(100%, 520px); display: grid; gap: 18px; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 18px 48px var(--shadow); }\n.subtitle-export-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }\n.subtitle-export-heading h2, .subtitle-export-heading p, .subtitle-export-empty, .subtitle-export-error { margin: 0; }\n.subtitle-export-heading h2 { font-size: 1.05rem; }\n.subtitle-export-close { width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; color: var(--text-soft); font: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer; }\n.subtitle-export-close:hover, .subtitle-export-close:focus-visible { background: var(--accent-subtle); }\n.subtitle-export-fields { display: grid; gap: 16px; }\n.subtitle-export-fields > label, .subtitle-export-fields fieldset { display: grid; gap: 7px; color: var(--text-soft); font-size: 0.88rem; }\n.subtitle-export-fields select { min-height: 40px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--text); font: inherit; }\n.subtitle-export-fields fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }\n.subtitle-export-fields legend { padding: 0 6px; color: var(--muted); }\n.subtitle-export-fields fieldset label { display: flex; align-items: center; gap: 7px; }\n.subtitle-export-empty { color: var(--muted); line-height: 1.5; }\n.subtitle-export-error { color: var(--error-text); font-size: 0.88rem; }\n.subtitle-export-actions { display: flex; justify-content: flex-end; gap: 10px; }\n.subtitle-export-actions button { min-height: 38px; padding: 0 14px; border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }\n.subtitle-export-secondary { border: 1px solid var(--border-strong); background: transparent; color: var(--text); }\n.subtitle-export-primary { border: 1px solid var(--accent); background: var(--accent-strong); color: #fff; }\n.subtitle-export-primary:disabled { cursor: not-allowed; opacity: 0.5; }\n@media (max-width: 540px) { .subtitle-export-overlay { padding: 12px; } .subtitle-export-fields fieldset { grid-template-columns: 1fr; } }\n''')
+          PY
+      - name: Verify themed application
+        run: bun run check
+      - name: Commit themed shell
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add frontend/src
+          git commit -m "Add system light and dark appearance"
+          git push origin HEAD:feature/appearance-themes
