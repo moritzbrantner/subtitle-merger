@@ -10,6 +10,7 @@ const timelineEditorSource = fileURLToPath(
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: [
       {
         find: '@moritzbrantner/timeline-editor/text',
@@ -20,6 +21,9 @@ export default defineConfig({
         replacement: `${timelineEditorSource}index.ts`,
       },
     ],
+  },
+  optimizeDeps: {
+    exclude: ['@moritzbrantner/timeline-editor', '@moritzbrantner/timeline-editor/text'],
   },
   server: {
     proxy: {
