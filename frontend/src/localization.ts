@@ -11,6 +11,10 @@ export type AppMessages = {
   openVideo: string
   exportSubtitles: string
   language: string
+  appearance: string
+  appearanceSystem: string
+  appearanceLight: string
+  appearanceDark: string
   automaticSubtitles: string
   generateSubtitles: string
   generationDescription: string
@@ -65,6 +69,10 @@ const messages: Record<Locale, AppMessages> = {
     openVideo: 'Open video…',
     exportSubtitles: 'Export subtitles…',
     language: 'Language',
+    appearance: 'Appearance',
+    appearanceSystem: 'System',
+    appearanceLight: 'Light',
+    appearanceDark: 'Dark',
     automaticSubtitles: 'Automatic subtitles',
     generateSubtitles: 'Generate subtitles',
     generationDescription: 'Creates an editable source track and optional translated track.',
@@ -116,6 +124,10 @@ const messages: Record<Locale, AppMessages> = {
     openVideo: 'Video öffnen…',
     exportSubtitles: 'Untertitel exportieren…',
     language: 'Sprache',
+    appearance: 'Darstellung',
+    appearanceSystem: 'System',
+    appearanceLight: 'Hell',
+    appearanceDark: 'Dunkel',
     automaticSubtitles: 'Automatische Untertitel',
     generateSubtitles: 'Untertitel erzeugen',
     generationDescription: 'Erstellt eine bearbeitbare Quellspur und optional eine übersetzte Spur.',
@@ -167,6 +179,10 @@ const messages: Record<Locale, AppMessages> = {
     openVideo: 'Abrir vídeo…',
     exportSubtitles: 'Exportar subtítulos…',
     language: 'Idioma',
+    appearance: 'Apariencia',
+    appearanceSystem: 'Sistema',
+    appearanceLight: 'Claro',
+    appearanceDark: 'Oscuro',
     automaticSubtitles: 'Subtítulos automáticos',
     generateSubtitles: 'Generar subtítulos',
     generationDescription: 'Crea una pista fuente editable y una pista traducida opcional.',

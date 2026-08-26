@@ -34,6 +34,12 @@ import {
 } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
 import {
+  appearances,
+  applyAppearance,
+  getPreferredAppearance,
+  type Appearance,
+} from './appearance'
+import {
   formatLanguageName,
   getMessages,
   getPreferredLocale,
@@ -202,6 +208,7 @@ function ReferenceVideoPreview({
 
 function App() {
   const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())
+  const [appearance, setAppearance] = useState<Appearance>(() => getPreferredAppearance())
   const messages = useMemo(() => getMessages(locale), [locale])
   const textExtension = useMemo(
     () => createTimelineTextExtension() as unknown as EditorExtension,
@@ -237,6 +244,8 @@ function App() {
   useEffect(() => {
     persistLocale(locale)
   }, [locale])
+
+  useEffect(() => applyAppearance(appearance), [appearance])
 
   function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
     const session = buildSubtitleSession(video.durationMs, nextAssets)
@@ -398,16 +407,35 @@ function App() {
             </div>
           ) : null}
         </nav>
-        <label className="locale-select">
-          <span>{messages.language}</span>
-          <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>
-            {supportedLocales.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {formatLanguageName(candidate, candidate)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="editor-preferences">
+          <label className="preference-select">
+            <span>{messages.language}</span>
+            <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>
+              {supportedLocales.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {formatLanguageName(candidate, candidate)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="preference-select">
+            <span>{messages.appearance}</span>
+            <select
+              value={appearance}
+              onChange={(event) => setAppearance(event.currentTarget.value as Appearance)}
+            >
+              {appearances.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {candidate === 'system'
+                    ? messages.appearanceSystem
+                    : candidate === 'light'
+                      ? messages.appearanceLight
+                      : messages.appearanceDark}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
 
       <div className="editor-content">
