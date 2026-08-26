@@ -38,6 +38,18 @@ const completedJob = {
 }
 
 test('opens, generates, edits and exports subtitles through the application shell', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('requestfailed', (request) => {
+    const url = request.url()
+    if (!url.includes('/api/subtitle-jobs/job-1/events')) {
+      browserErrors.push(`request failed: ${url}: ${request.failure()?.errorText ?? 'unknown'}`)
+    }
+  })
+
   await page.route('**/api/video-picks', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -74,7 +86,11 @@ test('opens, generates, edits and exports subtitles through the application shel
   })
 
   await page.goto('/')
+  await page.waitForTimeout(750)
 
+  expect(browserErrors, `Browser startup errors:\n${browserErrors.join('\n\n')}`).toEqual([])
+
+  await expect(page.getByRole('button', { name: 'File', exact: true })).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Open video…' }).click()
 
