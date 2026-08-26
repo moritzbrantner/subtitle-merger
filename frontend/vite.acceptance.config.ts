@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  build: {
+    minify: false,
+    sourcemap: true,
+  },
   server: {
     proxy: {
       '/api': 'http://127.0.0.1:3000',
