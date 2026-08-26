@@ -25,10 +25,9 @@ jobs:
           app = Path('frontend/src/App.tsx')
           text = app.read_text()
 
-          text = text.replace("import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'", "import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'", 1)
           text = text.replace(
               "import { SubtitleExportDialog } from './SubtitleExportDialog'",
-              "import { SubtitleExportDialog } from './SubtitleExportDialog'\nimport { AppHeader } from './app/AppHeader'\nimport { GenerationPanel } from './app/GenerationPanel'\nimport {\n  ReferenceVideoPreview,\n  probeReferenceVideoMetadata,\n  type ReferenceVideo,\n} from './app/ReferenceVideoPreview'\nimport { StatusMessages } from './app/StatusMessages'",
+              "import { SubtitleExportDialog } from './SubtitleExportDialog'\nimport { AppHeader } from './app/AppHeader'\nimport { GenerationPanel } from './app/GenerationPanel'\nimport { ReferenceVideoPreview } from './app/ReferenceVideoPreview'\nimport { probeReferenceVideoMetadata, type ReferenceVideo } from './app/reference-video'\nimport { StatusMessages } from './app/StatusMessages'",
               1,
           )
           text = text.replace(
@@ -49,7 +48,8 @@ jobs:
 
           start = text.index('type ReferenceVideo = {')
           end = text.index('function useTimelineViewportWidth', start)
-          text = text[:start] + text[end:]
+          helpers = '''const defaultTransportState: TimelineWorkbenchTransportState = {\n  status: 'paused',\n  playbackRate: 1,\n  loop: false,\n}\n\nfunction createEditorHistory(): EditorHistory {\n  return createTimelineEditorHistory() as EditorHistory\n}\n\n'''
+          text = text[:start] + helpers + text[end:]
 
           start = text.index('function ReferenceVideoPreview(')
           end = text.index('function App() {', start)
