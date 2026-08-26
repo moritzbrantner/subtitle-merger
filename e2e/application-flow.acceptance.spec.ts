@@ -1,4 +1,4 @@
-import { expect, test, type ConsoleMessage } from '@playwright/test'
+import { expect, test, type ConsoleMessage, type Response } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -59,10 +59,22 @@ async function describeConsoleMessage(message: ConsoleMessage): Promise<string> 
   return values.filter(Boolean).join(' ') || message.text() || '<empty console error>'
 }
 
+async function describeErrorResponse(response: Response): Promise<string> {
+  let body = '<body unavailable>'
+  try {
+    body = (await response.text()).slice(0, 4_000)
+  } catch {
+    // Some response bodies are not retained by the browser. The status and URL are still useful.
+  }
+
+  return `${response.status()} ${response.url()}\n${body}`
+}
+
 test('opens, generates, edits and exports subtitles through the application shell', async ({ page }) => {
   const pageErrors: string[] = []
   const consoleErrors: Promise<string>[] = []
   const failedRequests: string[] = []
+  const errorResponses: Promise<string>[] = []
 
   page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
   page.on('console', (message) => {
@@ -73,6 +85,9 @@ test('opens, generates, edits and exports subtitles through the application shel
     if (!url.includes('/api/subtitle-jobs/job-1/events')) {
       failedRequests.push(`${url}: ${request.failure()?.errorText ?? 'unknown'}`)
     }
+  })
+  page.on('response', (response) => {
+    if (response.status() >= 400) errorResponses.push(describeErrorResponse(response))
   })
 
   await page.route('**/api/video-picks', async (route) => {
@@ -116,7 +131,10 @@ test('opens, generates, edits and exports subtitles through the application shel
   try {
     await expect(fileButton).toBeVisible({ timeout: 5_000 })
   } catch {
-    const resolvedConsoleErrors = await Promise.all(consoleErrors)
+    const [resolvedConsoleErrors, resolvedErrorResponses] = await Promise.all([
+      Promise.all(consoleErrors),
+      Promise.all(errorResponses),
+    ])
     const body = await page.locator('body').innerHTML().catch(() => '<body unavailable>')
     throw new Error(
       [
@@ -124,6 +142,7 @@ test('opens, generates, edits and exports subtitles through the application shel
         `Page errors:\n${pageErrors.join('\n\n') || '<none>'}`,
         `Console errors:\n${resolvedConsoleErrors.join('\n\n') || '<none>'}`,
         `Failed requests:\n${failedRequests.join('\n') || '<none>'}`,
+        `HTTP error responses:\n${resolvedErrorResponses.join('\n\n') || '<none>'}`,
         `Body:\n${body}`,
       ].join('\n\n'),
     )
