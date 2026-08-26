@@ -172,7 +172,7 @@ test('opens, generates, edits and exports subtitles through the application shel
   const download = await downloadPromise
   const downloadPath = await download.path()
 
-  expect(download.suggestedFilename()).toBe('subtitles-en.srt')
+  expect(download.suggestedFilename()).toBe('subtitles-en-en.srt')
   expect(downloadPath).not.toBeNull()
 
   const exported = await readFile(downloadPath!, 'utf8')
