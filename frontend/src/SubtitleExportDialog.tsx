@@ -6,12 +6,14 @@ import {
 } from './subtitle-export'
 import { downloadSubtitleExport, resolveExportTrackId } from './subtitle-export-ui'
 import type { SubtitleDocument } from './subtitle-session'
+import { getMessages, type Locale } from './localization'
 import './SubtitleExportDialog.css'
 
 type SubtitleExportDialogProps = {
   open: boolean
   document: SubtitleDocument
   selectedTrackIds?: string[]
+  locale: Locale
   onClose: () => void
 }
 
@@ -27,8 +29,10 @@ export function SubtitleExportDialog({
   open,
   document: subtitleDocument,
   selectedTrackIds,
+  locale,
   onClose,
 }: SubtitleExportDialogProps) {
+  const messages = getMessages(locale)
   const tracks = useMemo(() => listEditableSubtitleTracks(subtitleDocument), [subtitleDocument])
   const [trackId, setTrackId] = useState('')
   const [format, setFormat] = useState<SubtitleExportFormat>('srt')
@@ -147,7 +151,7 @@ export function SubtitleExportDialog({
 
   function exportTrack() {
     if (!trackId) {
-      setError('Choose an editable subtitle track to export.')
+      setError(messages.chooseTrack)
       return
     }
 
@@ -155,7 +159,7 @@ export function SubtitleExportDialog({
       downloadSubtitleExport(exportSubtitleTrack(subtitleDocument, trackId, format))
       onClose()
     } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : 'Could not export subtitles.')
+      setError(exportError instanceof Error ? exportError.message : messages.exportFailed)
     }
   }
 
@@ -179,14 +183,14 @@ export function SubtitleExportDialog({
       >
         <div className="subtitle-export-heading">
           <div>
-            <p className="eyebrow">Export subtitles</p>
-            <h2 id="subtitle-export-heading">Save the current edited track</h2>
+            <p className="eyebrow">{messages.exportEyebrow}</p>
+            <h2 id="subtitle-export-heading">{messages.exportHeading}</h2>
           </div>
           <button
             ref={closeButtonRef}
             className="subtitle-export-close"
             type="button"
-            aria-label="Close export dialog"
+            aria-label={messages.closeExportDialog}
             onClick={onClose}
           >
             ×
@@ -196,7 +200,7 @@ export function SubtitleExportDialog({
         {tracks.length > 0 ? (
           <div className="subtitle-export-fields">
             <label>
-              Track
+              {messages.track}
               <select
                 ref={trackSelectRef}
                 value={trackId}
@@ -211,7 +215,7 @@ export function SubtitleExportDialog({
             </label>
 
             <fieldset>
-              <legend>Format</legend>
+              <legend>{messages.format}</legend>
               <label>
                 <input
                   type="radio"
@@ -236,7 +240,7 @@ export function SubtitleExportDialog({
           </div>
         ) : (
           <p className="subtitle-export-empty">
-            No editable subtitle tracks are available yet. Load or generate subtitles first.
+            {messages.noEditableTracks}
           </p>
         )}
 
@@ -244,7 +248,7 @@ export function SubtitleExportDialog({
 
         <div className="subtitle-export-actions">
           <button type="button" className="subtitle-export-secondary" onClick={onClose}>
-            Cancel
+            {messages.cancel}
           </button>
           <button
             type="button"
@@ -252,7 +256,7 @@ export function SubtitleExportDialog({
             disabled={tracks.length === 0 || !trackId}
             onClick={exportTrack}
           >
-            Export
+            {messages.export}
           </button>
         </div>
       </section>
