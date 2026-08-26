@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type ConsoleMessage } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -37,16 +37,41 @@ const completedJob = {
   translationTrack: null,
 }
 
+async function describeConsoleMessage(message: ConsoleMessage): Promise<string> {
+  const values = await Promise.all(
+    message.args().map(async (argument) => {
+      try {
+        return await argument.evaluate((value) => {
+          if (value instanceof Error) return `${value.name}: ${value.message}\n${value.stack ?? ''}`
+          if (typeof value === 'string') return value
+          try {
+            return JSON.stringify(value)
+          } catch {
+            return String(value)
+          }
+        })
+      } catch {
+        return message.text()
+      }
+    }),
+  )
+
+  return values.filter(Boolean).join(' ') || message.text() || '<empty console error>'
+}
+
 test('opens, generates, edits and exports subtitles through the application shell', async ({ page }) => {
-  const browserErrors: string[] = []
-  page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message))
+  const pageErrors: string[] = []
+  const consoleErrors: Promise<string>[] = []
+  const failedRequests: string[] = []
+
+  page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
   page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+    if (message.type() === 'error') consoleErrors.push(describeConsoleMessage(message))
   })
   page.on('requestfailed', (request) => {
     const url = request.url()
     if (!url.includes('/api/subtitle-jobs/job-1/events')) {
-      browserErrors.push(`request failed: ${url}: ${request.failure()?.errorText ?? 'unknown'}`)
+      failedRequests.push(`${url}: ${request.failure()?.errorText ?? 'unknown'}`)
     }
   })
 
@@ -86,12 +111,25 @@ test('opens, generates, edits and exports subtitles through the application shel
   })
 
   await page.goto('/')
-  await page.waitForTimeout(750)
 
-  expect(browserErrors, `Browser startup errors:\n${browserErrors.join('\n\n')}`).toEqual([])
+  const fileButton = page.getByRole('button', { name: 'File', exact: true })
+  try {
+    await expect(fileButton).toBeVisible({ timeout: 5_000 })
+  } catch {
+    const resolvedConsoleErrors = await Promise.all(consoleErrors)
+    const body = await page.locator('body').innerHTML().catch(() => '<body unavailable>')
+    throw new Error(
+      [
+        'Application did not render its File menu.',
+        `Page errors:\n${pageErrors.join('\n\n') || '<none>'}`,
+        `Console errors:\n${resolvedConsoleErrors.join('\n\n') || '<none>'}`,
+        `Failed requests:\n${failedRequests.join('\n') || '<none>'}`,
+        `Body:\n${body}`,
+      ].join('\n\n'),
+    )
+  }
 
-  await expect(page.getByRole('button', { name: 'File', exact: true })).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await fileButton.click()
   await page.getByRole('menuitem', { name: 'Open video…' }).click()
 
   await expect(page.getByTestId('reference-video')).toBeVisible()
