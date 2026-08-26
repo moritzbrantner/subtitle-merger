@@ -159,8 +159,9 @@ test('opens, generates, edits and exports subtitles through the application shel
 
   const subtitleClip = page.locator('[data-slot="timeline-editor-clip"][role="button"][aria-label="Subtitles — EN"]')
   await expect(subtitleClip).toBeVisible()
-  await subtitleClip.focus()
-  await subtitleClip.press('ArrowRight')
+  const timeline = page.locator('[data-slot="timeline-editor"]')
+  await timeline.focus()
+  await timeline.press('ArrowRight')
   await expect(subtitleClip).toHaveAttribute('title', /0:00\.1/)
 
   await page.getByRole('button', { name: 'File', exact: true }).click()
