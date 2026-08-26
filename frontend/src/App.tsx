@@ -14,6 +14,11 @@ import {
   type TimelineTextItemData,
 } from '@moritzbrantner/timeline-editor/text'
 import { SubtitleExportDialog } from './SubtitleExportDialog'
+import { AppHeader } from './app/AppHeader'
+import { GenerationPanel } from './app/GenerationPanel'
+import { ReferenceVideoPreview } from './app/ReferenceVideoPreview'
+import { probeReferenceVideoMetadata, type ReferenceVideo } from './app/reference-video'
+import { StatusMessages } from './app/StatusMessages'
 import {
   startSubtitleGeneration,
   subscribeSubtitleJob,
@@ -26,81 +31,23 @@ import {
   type SubtitleAsset,
   type SubtitleDocument,
 } from './subtitle-session'
-import {
-  loadSubtitleAssets,
-  requestVideoPick,
-  type LoadedVideo,
-  type LoadWarning,
-} from './video-load'
+import { loadSubtitleAssets, requestVideoPick, type LoadedVideo, type LoadWarning } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
-import {
-  appearances,
-  applyAppearance,
-  getPreferredAppearance,
-  type Appearance,
-} from './appearance'
-import {
-  formatLanguageName,
-  getMessages,
-  getPreferredLocale,
-  persistLocale,
-  supportedLocales,
-  type AppMessages,
-  type Locale,
-} from './localization'
+import { applyAppearance, getPreferredAppearance, type Appearance } from './appearance'
+import { getMessages, getPreferredLocale, persistLocale, type Locale } from './localization'
 import './App.css'
 
 type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineTextItemData>
 type EditorExtension = TimelineEditorExtension<TimelineTextItemData>
-
-type ReferenceVideo = {
-  filename: string
-  mediaUrl: string
-  durationMs: number
-}
-
-type VideoMetadata = {
-  durationMs: number
-}
 
 const defaultTransportState: TimelineWorkbenchTransportState = {
   status: 'paused',
   playbackRate: 1,
   loop: false,
 }
-const languageOptions = ['en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl'] as const
 
 function createEditorHistory(): EditorHistory {
   return createTimelineEditorHistory() as EditorHistory
-}
-
-function probeVideoMetadata(mediaUrl: string, messages: AppMessages): Promise<VideoMetadata> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-
-    function cleanup() {
-      video.removeAttribute('src')
-      video.load()
-    }
-
-    video.preload = 'metadata'
-    video.onloadedmetadata = () => {
-      const durationMs = Math.round(video.duration * 1_000)
-      cleanup()
-
-      if (!Number.isFinite(durationMs) || durationMs <= 0) {
-        reject(new Error(messages.videoDurationFailed))
-        return
-      }
-
-      resolve({ durationMs })
-    }
-    video.onerror = () => {
-      cleanup()
-      reject(new Error(messages.videoLoadFailed))
-    }
-    video.src = mediaUrl
-  })
 }
 
 function useTimelineViewportWidth(containerRef: RefObject<HTMLElement | null>): number {
@@ -131,81 +78,6 @@ function useTimelineViewportWidth(containerRef: RefObject<HTMLElement | null>): 
   return widthPx
 }
 
-function ReferenceVideoPreview({
-  referenceVideo,
-  currentTimeMs,
-  transportState,
-  onCurrentTimeChange,
-  onError,
-  messages,
-}: {
-  referenceVideo?: ReferenceVideo
-  currentTimeMs: number
-  transportState: TimelineWorkbenchTransportState
-  onCurrentTimeChange: (timeMs: number) => void
-  onError: (message: string) => void
-  messages: AppMessages
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    const video = videoRef.current
-
-    if (!video || !referenceVideo) {
-      return
-    }
-
-    const nextTimeSeconds = Math.min(
-      Math.max(currentTimeMs / 1_000, 0),
-      referenceVideo.durationMs / 1_000,
-    )
-
-    if (Math.abs(video.currentTime - nextTimeSeconds) > 0.12) {
-      video.currentTime = nextTimeSeconds
-    }
-
-    video.playbackRate = transportState.playbackRate > 0 ? transportState.playbackRate : 1
-
-    if (transportState.status === 'playing' && transportState.playbackRate > 0) {
-      void video.play().catch(() => {
-        onError(messages.playbackBlocked)
-      })
-    } else {
-      video.pause()
-    }
-  }, [currentTimeMs, onError, referenceVideo, transportState])
-
-  if (!referenceVideo) {
-    return null
-  }
-
-  return (
-    <section className="reference-preview" aria-labelledby="reference-preview-heading">
-      <div className="reference-preview-heading">
-        <p className="eyebrow">{messages.referenceVideo}</p>
-        <h2 id="reference-preview-heading">{referenceVideo.filename}</h2>
-      </div>
-      <video
-        ref={videoRef}
-        className="reference-video"
-        data-testid="reference-video"
-        src={referenceVideo.mediaUrl}
-        preload="metadata"
-        onTimeUpdate={(event) => {
-          const nextTimeMs = Math.round(event.currentTarget.currentTime * 1_000)
-
-          if (Math.abs(nextTimeMs - currentTimeMs) > 120) {
-            onCurrentTimeChange(nextTimeMs)
-          }
-        }}
-        onError={() => {
-          onError(messages.referenceVideoFailed)
-        }}
-      />
-    </section>
-  )
-}
-
 function App() {
   const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())
   const [appearance, setAppearance] = useState<Appearance>(() => getPreferredAppearance())
@@ -224,7 +96,6 @@ function App() {
   const [transportState, setTransportState] = useState(defaultTransportState)
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
-  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false)
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [isPickingVideo, setIsPickingVideo] = useState(false)
   const [selectedVideo, setSelectedVideo] = useState<LoadedVideo>()
@@ -278,7 +149,7 @@ function App() {
         return
       }
 
-      const metadata = await probeVideoMetadata(result.load.video.mediaUrl, messages)
+      const metadata = await probeReferenceVideoMetadata(result.load.video.mediaUrl, messages)
       const subtitles = await loadSubtitleAssets(result.load, metadata.durationMs)
 
       commitLoadedSession(
@@ -364,131 +235,35 @@ function App() {
 
   return (
     <main className="editor-shell">
-      <header className="editor-topbar">
-        <div className="editor-title">
-          <p className="eyebrow">{messages.appName}</p>
-          <h1>{messages.title}</h1>
-        </div>
-
-        <nav className="menu-bar" aria-label={messages.mainMenu}>
-          <button
-            className="menu-trigger"
-            type="button"
-            aria-expanded={isFileMenuOpen}
-            aria-controls="file-menu"
-            aria-haspopup="menu"
-            onClick={() => setIsFileMenuOpen((isOpen) => !isOpen)}
-          >
-            {messages.file}
-          </button>
-          {isFileMenuOpen ? (
-            <div className="menu-items" id="file-menu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={isPickingVideo}
-                onClick={() => {
-                  setIsFileMenuOpen(false)
-                  void openVideo()
-                }}
-              >
-                {isPickingVideo ? messages.opening : messages.openVideo}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setIsFileMenuOpen(false)
-                  setIsExportDialogOpen(true)
-                }}
-              >
-                {messages.exportSubtitles}
-              </button>
-            </div>
-          ) : null}
-        </nav>
-        <div className="editor-preferences">
-          <label className="preference-select">
-            <span>{messages.language}</span>
-            <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>
-              {supportedLocales.map((candidate) => (
-                <option key={candidate} value={candidate}>
-                  {formatLanguageName(candidate, candidate)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="preference-select">
-            <span>{messages.appearance}</span>
-            <select
-              value={appearance}
-              onChange={(event) => setAppearance(event.currentTarget.value as Appearance)}
-            >
-              {appearances.map((candidate) => (
-                <option key={candidate} value={candidate}>
-                  {candidate === 'system'
-                    ? messages.appearanceSystem
-                    : candidate === 'light'
-                      ? messages.appearanceLight
-                      : messages.appearanceDark}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </header>
+      <AppHeader
+        messages={messages}
+        locale={locale}
+        appearance={appearance}
+        isPickingVideo={isPickingVideo}
+        onOpenVideo={() => void openVideo()}
+        onOpenExport={() => setIsExportDialogOpen(true)}
+        onLocaleChange={setLocale}
+        onAppearanceChange={setAppearance}
+      />
 
       <div className="editor-content">
-        {loadError ? <div className="load-error" role="alert">{loadError}</div> : null}
-        {loadWarnings.length > 0 ? (
-          <div className="load-warning" role="status">
-            <ul>
-              {loadWarnings.map((warning) => (
-                <li key={`${warning.filename}-${warning.message}`}>
-                  <strong>{warning.filename}</strong>: {warning.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {emptyState ? <div className="empty-state" role="status">{emptyState}</div> : null}
+        <StatusMessages
+          error={loadError}
+          warnings={loadWarnings}
+          emptyState={emptyState}
+        />
         {selectedVideo ? (
-          <section className="generation-panel" aria-labelledby="generation-heading">
-            <div>
-              <p className="eyebrow">{messages.automaticSubtitles}</p>
-              <h2 id="generation-heading">{messages.generateSubtitles}</h2>
-              <p>{messages.generationDescription}</p>
-            </div>
-            <label>
-              {messages.translateTo}
-              <select
-                value={targetLanguage}
-                onChange={(event) => setTargetLanguage(event.currentTarget.value)}
-              >
-                <option value="">{messages.noTranslation}</option>
-                {languageOptions.map((code) => (
-                  <option key={code} value={code}>{formatLanguageName(locale, code)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={diarize}
-                onChange={(event) => setDiarize(event.currentTarget.checked)}
-              />
-              {messages.identifySpeakers}
-            </label>
-            <button
-              className="generate-button"
-              type="button"
-              disabled={isGenerating}
-              onClick={() => void generateSubtitles()}
-            >
-              {isGenerating ? messages.starting : messages.generateSubtitles}
-            </button>
-            {generationMessage ? <p className="generation-status" role="status">{generationMessage}</p> : null}
-          </section>
+          <GenerationPanel
+            messages={messages}
+            locale={locale}
+            targetLanguage={targetLanguage}
+            diarize={diarize}
+            isGenerating={isGenerating}
+            generationMessage={generationMessage}
+            onTargetLanguageChange={setTargetLanguage}
+            onDiarizeChange={setDiarize}
+            onGenerate={() => void generateSubtitles()}
+          />
         ) : null}
 
         <ReferenceVideoPreview
