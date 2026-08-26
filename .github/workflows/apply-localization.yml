@@ -1,0 +1,155 @@
+name: Apply localized app shell
+
+on:
+  push:
+    branches: [feature/localized-app-shell]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      - name: Apply localization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) < count:
+                  raise SystemExit(f'{path}: missing expected text: {old!r}')
+              file.write_text(text.replace(old, new, count))
+
+          app = Path('frontend/src/App.tsx')
+          text = app.read_text()
+          text = text.replace(
+              "import {\n  formatSubtitleJobPhase,\n  type GeneratedTrack,\n  type SubtitleJob,\n  type SubtitleJobUpdate,\n} from './generation/types'",
+              "import { type GeneratedTrack, type SubtitleJob, type SubtitleJobUpdate } from './generation/types'",
+              1,
+          )
+          text = text.replace(
+              "import { getFitTimelinePixelsPerSecond } from './timeline-viewport'",
+              "import { getFitTimelinePixelsPerSecond } from './timeline-viewport'\nimport {\n  formatLanguageName,\n  getMessages,\n  getPreferredLocale,\n  persistLocale,\n  supportedLocales,\n  type AppMessages,\n  type Locale,\n} from './localization'",
+              1,
+          )
+          text = text.replace(
+              "const languageOptions = [\n  ['en', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'],\n  ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],\n] as const",
+              "const languageOptions = ['en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl'] as const",
+              1,
+          )
+          text = text.replace(
+              'function probeVideoMetadata(mediaUrl: string): Promise<VideoMetadata> {',
+              'function probeVideoMetadata(mediaUrl: string, messages: AppMessages): Promise<VideoMetadata> {',
+              1,
+          )
+          text = text.replace("reject(new Error('Could not read video duration.'))", "reject(new Error(messages.videoDurationFailed))", 1)
+          text = text.replace("reject(new Error('Could not load video metadata.'))", "reject(new Error(messages.videoLoadFailed))", 1)
+          text = text.replace(
+              "  onError,\n}: {\n  referenceVideo?: ReferenceVideo",
+              "  onError,\n  messages,\n}: {\n  referenceVideo?: ReferenceVideo",
+              1,
+          )
+          text = text.replace(
+              "  onError: (message: string) => void\n}) {",
+              "  onError: (message: string) => void\n  messages: AppMessages\n}) {",
+              1,
+          )
+          text = text.replace("onError('Video playback was blocked. Interact with the timeline and try again.')", "onError(messages.playbackBlocked)", 1)
+          text = text.replace('<p className="eyebrow">Reference video</p>', '<p className="eyebrow">{messages.referenceVideo}</p>', 1)
+          text = text.replace("onError('Could not play the reference video.')", "onError(messages.referenceVideoFailed)", 1)
+          text = text.replace(
+              "function App() {\n  const textExtension",
+              "function App() {\n  const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())\n  const messages = useMemo(() => getMessages(locale), [locale])\n  const textExtension",
+              1,
+          )
+          text = text.replace(
+              "  const minPixelsPerSecond = useMemo(\n    () => getFitTimelinePixelsPerSecond(document.durationMs ?? 0, editorViewportWidthPx),\n    [document.durationMs, editorViewportWidthPx],\n  )",
+              "  const minPixelsPerSecond = useMemo(\n    () => getFitTimelinePixelsPerSecond(document.durationMs ?? 0, editorViewportWidthPx),\n    [document.durationMs, editorViewportWidthPx],\n  )\n\n  useEffect(() => {\n    persistLocale(locale)\n  }, [locale])",
+              1,
+          )
+          text = text.replace("? 'No subtitle tracks yet. Generate subtitles to add editable tracks.'", '? messages.emptyTracks', 1)
+          text = text.replace('const metadata = await probeVideoMetadata(result.load.video.mediaUrl)', 'const metadata = await probeVideoMetadata(result.load.video.mediaUrl, messages)', 1)
+          text = text.replace("error instanceof Error ? error.message : 'Could not load this video.'", 'error instanceof Error ? error.message : messages.videoLoadFailed', 1)
+          text = text.replace("setGenerationMessage('Preparing subtitle generation…')", 'setGenerationMessage(messages.preparingGeneration)', 1)
+          text = text.replace('setGenerationMessage(job.message)', 'setGenerationMessage(messages.jobPhases[job.phase])', 1)
+          text = text.replace("onProtocolError: () => setGenerationMessage('Subtitle generation is running…')", 'onProtocolError: () => setGenerationMessage(messages.generationRunning)', 1)
+          text = text.replace("error instanceof Error ? error.message : 'Could not start subtitle generation.'", 'error instanceof Error ? error.message : messages.jobPhases.failed', 1)
+          text = text.replace('setGenerationMessage(`${formatSubtitleJobPhase(update.progress.phase)}…`)', 'setGenerationMessage(`${messages.jobPhases[update.progress.phase]}…`)', 1)
+          text = text.replace("setGenerationMessage(job.message || `${formatSubtitleJobPhase(job.phase)}…`)", "setGenerationMessage(job.state === 'failed' && job.message ? job.message : `${messages.jobPhases[job.phase]}…`)", 1)
+          text = text.replace("job.sourceTrack ? { track: job.sourceTrack, label: 'Subtitles', color: '#2fbf71' } : undefined", "job.sourceTrack ? { track: job.sourceTrack, label: messages.sourceTrack, color: '#2fbf71' } : undefined", 1)
+          text = text.replace("job.translationTrack ? { track: job.translationTrack, label: 'Translation', color: '#c084fc' } : undefined", "job.translationTrack ? { track: job.translationTrack, label: messages.translationTrack, color: '#c084fc' } : undefined", 1)
+          text = text.replace('<p className="eyebrow">Subtitle Merger</p>\n          <h1>Subtitle Timeline Editor</h1>', '<p className="eyebrow">{messages.appName}</p>\n          <h1>{messages.title}</h1>', 1)
+          text = text.replace('<nav className="menu-bar" aria-label="Main menu">', '<nav className="menu-bar" aria-label={messages.mainMenu}>', 1)
+          text = text.replace('            File\n          </button>', '            {messages.file}\n          </button>', 1)
+          text = text.replace("{isPickingVideo ? 'Opening…' : 'Open video…'}", '{isPickingVideo ? messages.opening : messages.openVideo}', 1)
+          text = text.replace('                Export subtitles…', '                {messages.exportSubtitles}', 1)
+          text = text.replace(
+              '        </nav>\n      </header>',
+              '''        </nav>\n        <label className="locale-select">\n          <span>{messages.language}</span>\n          <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>\n            {supportedLocales.map((candidate) => (\n              <option key={candidate} value={candidate}>\n                {formatLanguageName(candidate, candidate)}\n              </option>\n            ))}\n          </select>\n        </label>\n      </header>''',
+              1,
+          )
+          text = text.replace('<p className="eyebrow">Automatic subtitles</p>', '<p className="eyebrow">{messages.automaticSubtitles}</p>', 1)
+          text = text.replace('<h2 id="generation-heading">Generate subtitles</h2>', '<h2 id="generation-heading">{messages.generateSubtitles}</h2>', 1)
+          text = text.replace('<p>Creates an editable source track and optional translated track.</p>', '<p>{messages.generationDescription}</p>', 1)
+          text = text.replace('              Translate to', '              {messages.translateTo}', 1)
+          text = text.replace('<option value="">No translation</option>', '<option value="">{messages.noTranslation}</option>', 1)
+          text = text.replace(
+              "{languageOptions.map(([code, label]) => (\n                  <option key={code} value={code}>{label}</option>\n                ))}",
+              "{languageOptions.map((code) => (\n                  <option key={code} value={code}>{formatLanguageName(locale, code)}</option>\n                ))}",
+              1,
+          )
+          text = text.replace('              Identify speakers', '              {messages.identifySpeakers}', 1)
+          text = text.replace("{isGenerating ? 'Starting…' : 'Generate subtitles'}", '{isGenerating ? messages.starting : messages.generateSubtitles}', 1)
+          text = text.replace('          onError={setLoadError}\n        />', '          onError={setLoadError}\n          messages={messages}\n        />', 1)
+          text = text.replace('          aria-label="Subtitle timeline editor"', '          aria-label={messages.timelineLabel}', 1)
+          text = text.replace(
+              '        selectedTrackIds={selection.trackIds}\n        onClose={() => setIsExportDialogOpen(false)}',
+              '        selectedTrackIds={selection.trackIds}\n        locale={locale}\n        onClose={() => setIsExportDialogOpen(false)}',
+              1,
+          )
+          app.write_text(text)
+
+          dialog = Path('frontend/src/SubtitleExportDialog.tsx')
+          text = dialog.read_text()
+          text = text.replace(
+              "import type { SubtitleDocument } from './subtitle-session'",
+              "import type { SubtitleDocument } from './subtitle-session'\nimport { getMessages, type Locale } from './localization'",
+              1,
+          )
+          text = text.replace('  selectedTrackIds?: string[]\n  onClose: () => void', '  selectedTrackIds?: string[]\n  locale: Locale\n  onClose: () => void', 1)
+          text = text.replace('  selectedTrackIds,\n  onClose,', '  selectedTrackIds,\n  locale,\n  onClose,', 1)
+          text = text.replace('  const tracks = useMemo(() => listEditableSubtitleTracks(subtitleDocument), [subtitleDocument])', '  const messages = getMessages(locale)\n  const tracks = useMemo(() => listEditableSubtitleTracks(subtitleDocument), [subtitleDocument])', 1)
+          text = text.replace("setError('Choose an editable subtitle track to export.')", 'setError(messages.chooseTrack)', 1)
+          text = text.replace("exportError instanceof Error ? exportError.message : 'Could not export subtitles.'", 'exportError instanceof Error ? exportError.message : messages.exportFailed', 1)
+          text = text.replace('<p className="eyebrow">Export subtitles</p>', '<p className="eyebrow">{messages.exportEyebrow}</p>', 1)
+          text = text.replace('<h2 id="subtitle-export-heading">Save the current edited track</h2>', '<h2 id="subtitle-export-heading">{messages.exportHeading}</h2>', 1)
+          text = text.replace('aria-label="Close export dialog"', 'aria-label={messages.closeExportDialog}', 1)
+          text = text.replace('              Track\n              <select', '              {messages.track}\n              <select', 1)
+          text = text.replace('<legend>Format</legend>', '<legend>{messages.format}</legend>', 1)
+          text = text.replace('            No editable subtitle tracks are available yet. Load or generate subtitles first.', '            {messages.noEditableTracks}', 1)
+          text = text.replace('            Cancel\n          </button>', '            {messages.cancel}\n          </button>', 1)
+          text = text.replace('            Export\n          </button>', '            {messages.export}\n          </button>', 1)
+          dialog.write_text(text)
+
+          css = Path('frontend/src/App.css')
+          css.write_text(css.read_text() + '''\n\n.locale-select {\n  display: inline-grid;\n  gap: 3px;\n  margin-left: auto;\n  color: #98a2b3;\n  font-size: 0.72rem;\n  font-weight: 700;\n}\n\n.locale-select select {\n  min-height: 34px;\n  padding: 0 8px;\n  border: 1px solid #4b5565;\n  border-radius: 5px;\n  background: #0f1217;\n  color: #f5f7fa;\n  font: inherit;\n}\n''')
+          PY
+      - name: Verify localized application
+        run: bun run check
+      - name: Commit localized shell
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add frontend/src
+          git commit -m "Localize the application shell"
+          git push origin HEAD:feature/localized-app-shell
