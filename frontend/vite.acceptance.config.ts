@@ -1,18 +1,15 @@
-import { fileURLToPath } from 'node:url'
-import { defineConfig, mergeConfig } from 'vite'
-import baseConfig from './vite.config'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite'
 
-const workspaceReact = fileURLToPath(new URL('../node_modules/react', import.meta.url))
-const workspaceReactDom = fileURLToPath(new URL('../node_modules/react-dom', import.meta.url))
-
-export default mergeConfig(
-  baseConfig,
-  defineConfig({
-    resolve: {
-      alias: [
-        { find: /^react(\/.*)?$/, replacement: `${workspaceReact}$1` },
-        { find: /^react-dom(\/.*)?$/, replacement: `${workspaceReactDom}$1` },
-      ],
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
     },
-  }),
-)
+  },
+})
