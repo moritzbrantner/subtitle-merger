@@ -56,30 +56,3 @@ export type SubtitleJobProgress = {
 export type SubtitleJobUpdate =
   | { kind: 'progress'; progress: SubtitleJobProgress }
   | { kind: 'snapshot'; job: SubtitleJob }
-
-export function formatSubtitleJobPhase(phase: SubtitleJobPhase): string {
-  switch (phase) {
-    case 'queued':
-      return 'Queued'
-    case 'decoding':
-      return 'Decoding media'
-    case 'detectingSpeech':
-      return 'Detecting speech'
-    case 'transcribing':
-      return 'Transcribing'
-    case 'aligning':
-      return 'Aligning subtitles'
-    case 'diarizing':
-      return 'Identifying speakers'
-    case 'translating':
-      return 'Translating'
-    case 'writingOutput':
-      return 'Preparing output'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    case 'failed':
-      return 'Failed'
-  }
-}

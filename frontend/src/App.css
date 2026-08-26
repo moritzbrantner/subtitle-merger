@@ -267,3 +267,23 @@ h1 {
     margin-left: 0;
   }
 }
+
+
+.locale-select {
+  display: inline-grid;
+  gap: 3px;
+  margin-left: auto;
+  color: #98a2b3;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.locale-select select {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #4b5565;
+  border-radius: 5px;
+  background: #0f1217;
+  color: #f5f7fa;
+  font: inherit;
+}

@@ -19,12 +19,7 @@ import {
   subscribeSubtitleJob,
   type SubtitleJobSubscription,
 } from './generation/client'
-import {
-  formatSubtitleJobPhase,
-  type GeneratedTrack,
-  type SubtitleJob,
-  type SubtitleJobUpdate,
-} from './generation/types'
+import { type GeneratedTrack, type SubtitleJob, type SubtitleJobUpdate } from './generation/types'
 import {
   buildSubtitleSession,
   createEmptySubtitleDocument,
@@ -38,6 +33,15 @@ import {
   type LoadWarning,
 } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
+import {
+  formatLanguageName,
+  getMessages,
+  getPreferredLocale,
+  persistLocale,
+  supportedLocales,
+  type AppMessages,
+  type Locale,
+} from './localization'
 import './App.css'
 
 type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineTextItemData>
@@ -58,16 +62,13 @@ const defaultTransportState: TimelineWorkbenchTransportState = {
   playbackRate: 1,
   loop: false,
 }
-const languageOptions = [
-  ['en', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'],
-  ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],
-] as const
+const languageOptions = ['en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl'] as const
 
 function createEditorHistory(): EditorHistory {
   return createTimelineEditorHistory() as EditorHistory
 }
 
-function probeVideoMetadata(mediaUrl: string): Promise<VideoMetadata> {
+function probeVideoMetadata(mediaUrl: string, messages: AppMessages): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video')
 
@@ -82,7 +83,7 @@ function probeVideoMetadata(mediaUrl: string): Promise<VideoMetadata> {
       cleanup()
 
       if (!Number.isFinite(durationMs) || durationMs <= 0) {
-        reject(new Error('Could not read video duration.'))
+        reject(new Error(messages.videoDurationFailed))
         return
       }
 
@@ -90,7 +91,7 @@ function probeVideoMetadata(mediaUrl: string): Promise<VideoMetadata> {
     }
     video.onerror = () => {
       cleanup()
-      reject(new Error('Could not load video metadata.'))
+      reject(new Error(messages.videoLoadFailed))
     }
     video.src = mediaUrl
   })
@@ -130,12 +131,14 @@ function ReferenceVideoPreview({
   transportState,
   onCurrentTimeChange,
   onError,
+  messages,
 }: {
   referenceVideo?: ReferenceVideo
   currentTimeMs: number
   transportState: TimelineWorkbenchTransportState
   onCurrentTimeChange: (timeMs: number) => void
   onError: (message: string) => void
+  messages: AppMessages
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -159,7 +162,7 @@ function ReferenceVideoPreview({
 
     if (transportState.status === 'playing' && transportState.playbackRate > 0) {
       void video.play().catch(() => {
-        onError('Video playback was blocked. Interact with the timeline and try again.')
+        onError(messages.playbackBlocked)
       })
     } else {
       video.pause()
@@ -173,7 +176,7 @@ function ReferenceVideoPreview({
   return (
     <section className="reference-preview" aria-labelledby="reference-preview-heading">
       <div className="reference-preview-heading">
-        <p className="eyebrow">Reference video</p>
+        <p className="eyebrow">{messages.referenceVideo}</p>
         <h2 id="reference-preview-heading">{referenceVideo.filename}</h2>
       </div>
       <video
@@ -190,7 +193,7 @@ function ReferenceVideoPreview({
           }
         }}
         onError={() => {
-          onError('Could not play the reference video.')
+          onError(messages.referenceVideoFailed)
         }}
       />
     </section>
@@ -198,6 +201,8 @@ function ReferenceVideoPreview({
 }
 
 function App() {
+  const [locale, setLocale] = useState<Locale>(() => getPreferredLocale())
+  const messages = useMemo(() => getMessages(locale), [locale])
   const textExtension = useMemo(
     () => createTimelineTextExtension() as unknown as EditorExtension,
     [],
@@ -229,6 +234,10 @@ function App() {
     [document.durationMs, editorViewportWidthPx],
   )
 
+  useEffect(() => {
+    persistLocale(locale)
+  }, [locale])
+
   function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
     const session = buildSubtitleSession(video.durationMs, nextAssets)
 
@@ -242,7 +251,7 @@ function App() {
     setTransportState(defaultTransportState)
     setEmptyState(
       nextAssets.length === 0
-        ? 'No subtitle tracks yet. Generate subtitles to add editable tracks.'
+        ? messages.emptyTracks
         : undefined,
     )
   }
@@ -260,7 +269,7 @@ function App() {
         return
       }
 
-      const metadata = await probeVideoMetadata(result.load.video.mediaUrl)
+      const metadata = await probeVideoMetadata(result.load.video.mediaUrl, messages)
       const subtitles = await loadSubtitleAssets(result.load, metadata.durationMs)
 
       commitLoadedSession(
@@ -275,7 +284,7 @@ function App() {
       setLoadWarnings(subtitles.warnings)
       setGenerationMessage(undefined)
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Could not load this video.')
+      setLoadError(error instanceof Error ? error.message : messages.videoLoadFailed)
     } finally {
       setIsPickingVideo(false)
     }
@@ -287,7 +296,7 @@ function App() {
     }
 
     setIsGenerating(true)
-    setGenerationMessage('Preparing subtitle generation…')
+    setGenerationMessage(messages.preparingGeneration)
 
     try {
       const job = await startSubtitleGeneration({
@@ -296,14 +305,14 @@ function App() {
         diarize,
       })
 
-      setGenerationMessage(job.message)
+      setGenerationMessage(messages.jobPhases[job.phase])
       jobEventsRef.current?.close()
       jobEventsRef.current = subscribeSubtitleJob(job.jobId, applySubtitleJobUpdate, {
-        onProtocolError: () => setGenerationMessage('Subtitle generation is running…'),
+        onProtocolError: () => setGenerationMessage(messages.generationRunning),
       })
     } catch (error) {
       setGenerationMessage(
-        error instanceof Error ? error.message : 'Could not start subtitle generation.',
+        error instanceof Error ? error.message : messages.jobPhases.failed,
       )
     } finally {
       setIsGenerating(false)
@@ -312,7 +321,7 @@ function App() {
 
   function applySubtitleJobUpdate(update: SubtitleJobUpdate) {
     if (update.kind === 'progress') {
-      setGenerationMessage(`${formatSubtitleJobPhase(update.progress.phase)}…`)
+      setGenerationMessage(`${messages.jobPhases[update.progress.phase]}…`)
       return
     }
 
@@ -320,14 +329,14 @@ function App() {
   }
 
   function applySubtitleJob(job: SubtitleJob) {
-    setGenerationMessage(job.message || `${formatSubtitleJobPhase(job.phase)}…`)
+    setGenerationMessage(job.state === 'failed' && job.message ? job.message : `${messages.jobPhases[job.phase]}…`)
     if (job.state === 'completed' || job.state === 'cancelled' || job.state === 'failed') {
       jobEventsRef.current?.close()
     }
     if (job.state !== 'completed') return
     const tracks = [
-      job.sourceTrack ? { track: job.sourceTrack, label: 'Subtitles', color: '#2fbf71' } : undefined,
-      job.translationTrack ? { track: job.translationTrack, label: 'Translation', color: '#c084fc' } : undefined,
+      job.sourceTrack ? { track: job.sourceTrack, label: messages.sourceTrack, color: '#2fbf71' } : undefined,
+      job.translationTrack ? { track: job.translationTrack, label: messages.translationTrack, color: '#c084fc' } : undefined,
     ].filter((entry): entry is { track: GeneratedTrack; label: string; color: string } => Boolean(entry))
     if (!referenceVideo || tracks.length === 0) return
     const generatedAssets: SubtitleAsset[] = tracks.map(({ track, label, color }) => ({
@@ -348,11 +357,11 @@ function App() {
     <main className="editor-shell">
       <header className="editor-topbar">
         <div className="editor-title">
-          <p className="eyebrow">Subtitle Merger</p>
-          <h1>Subtitle Timeline Editor</h1>
+          <p className="eyebrow">{messages.appName}</p>
+          <h1>{messages.title}</h1>
         </div>
 
-        <nav className="menu-bar" aria-label="Main menu">
+        <nav className="menu-bar" aria-label={messages.mainMenu}>
           <button
             className="menu-trigger"
             type="button"
@@ -361,7 +370,7 @@ function App() {
             aria-haspopup="menu"
             onClick={() => setIsFileMenuOpen((isOpen) => !isOpen)}
           >
-            File
+            {messages.file}
           </button>
           {isFileMenuOpen ? (
             <div className="menu-items" id="file-menu" role="menu">
@@ -374,7 +383,7 @@ function App() {
                   void openVideo()
                 }}
               >
-                {isPickingVideo ? 'Opening…' : 'Open video…'}
+                {isPickingVideo ? messages.opening : messages.openVideo}
               </button>
               <button
                 type="button"
@@ -384,11 +393,21 @@ function App() {
                   setIsExportDialogOpen(true)
                 }}
               >
-                Export subtitles…
+                {messages.exportSubtitles}
               </button>
             </div>
           ) : null}
         </nav>
+        <label className="locale-select">
+          <span>{messages.language}</span>
+          <select value={locale} onChange={(event) => setLocale(event.currentTarget.value as Locale)}>
+            {supportedLocales.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {formatLanguageName(candidate, candidate)}
+              </option>
+            ))}
+          </select>
+        </label>
       </header>
 
       <div className="editor-content">
@@ -408,19 +427,19 @@ function App() {
         {selectedVideo ? (
           <section className="generation-panel" aria-labelledby="generation-heading">
             <div>
-              <p className="eyebrow">Automatic subtitles</p>
-              <h2 id="generation-heading">Generate subtitles</h2>
-              <p>Creates an editable source track and optional translated track.</p>
+              <p className="eyebrow">{messages.automaticSubtitles}</p>
+              <h2 id="generation-heading">{messages.generateSubtitles}</h2>
+              <p>{messages.generationDescription}</p>
             </div>
             <label>
-              Translate to
+              {messages.translateTo}
               <select
                 value={targetLanguage}
                 onChange={(event) => setTargetLanguage(event.currentTarget.value)}
               >
-                <option value="">No translation</option>
-                {languageOptions.map(([code, label]) => (
-                  <option key={code} value={code}>{label}</option>
+                <option value="">{messages.noTranslation}</option>
+                {languageOptions.map((code) => (
+                  <option key={code} value={code}>{formatLanguageName(locale, code)}</option>
                 ))}
               </select>
             </label>
@@ -430,7 +449,7 @@ function App() {
                 checked={diarize}
                 onChange={(event) => setDiarize(event.currentTarget.checked)}
               />
-              Identify speakers
+              {messages.identifySpeakers}
             </label>
             <button
               className="generate-button"
@@ -438,7 +457,7 @@ function App() {
               disabled={isGenerating}
               onClick={() => void generateSubtitles()}
             >
-              {isGenerating ? 'Starting…' : 'Generate subtitles'}
+              {isGenerating ? messages.starting : messages.generateSubtitles}
             </button>
             {generationMessage ? <p className="generation-status" role="status">{generationMessage}</p> : null}
           </section>
@@ -452,12 +471,13 @@ function App() {
             setDocument((current) => ({ ...current, currentTimeMs }))
           }}
           onError={setLoadError}
+          messages={messages}
         />
 
         <section
           ref={editorWorkbenchRef}
           className="editor-workbench"
-          aria-label="Subtitle timeline editor"
+          aria-label={messages.timelineLabel}
         >
           <TimelineWorkbench
             document={document}
@@ -485,6 +505,7 @@ function App() {
         open={isExportDialogOpen}
         document={document}
         selectedTrackIds={selection.trackIds}
+        locale={locale}
         onClose={() => setIsExportDialogOpen(false)}
       />
     </main>
