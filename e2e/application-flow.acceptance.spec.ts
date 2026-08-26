@@ -161,8 +161,10 @@ test('opens, generates, edits and exports subtitles through the application shel
   await expect(subtitleClip).toBeVisible()
   const timeline = page.locator('[data-slot="timeline-editor"]')
   await timeline.focus()
-  await timeline.press('ArrowRight')
-  await expect(subtitleClip).toHaveAttribute('title', /0:00\.1/)
+  await timeline.press('Delete')
+  await expect(subtitleClip).toHaveCount(0)
+  await timeline.press('Control+z')
+  await expect(subtitleClip).toBeVisible()
 
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
