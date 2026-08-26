@@ -161,6 +161,7 @@ test('opens, generates, edits and exports subtitles through the application shel
   await expect(subtitleClip).toBeVisible()
   await subtitleClip.focus()
   await subtitleClip.press('ArrowRight')
+  await expect(subtitleClip).toHaveAttribute('title', /0:00\.1/)
 
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
@@ -176,6 +177,6 @@ test('opens, generates, edits and exports subtitles through the application shel
   expect(downloadPath).not.toBeNull()
 
   const exported = await readFile(downloadPath!, 'utf8')
-  expect(exported).toContain('00:00:00,600 --> 00:00:01,600')
+  expect(exported).toContain('00:00:00,500 --> 00:00:01,500')
   expect(exported).toContain('Generated subtitle')
 })
