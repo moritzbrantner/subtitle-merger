@@ -21,6 +21,6 @@
     "test:e2e": "bun run e2e:fixture && bunx playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.0"
+    "@playwright/test": "^1.62.1"
   }
 }
