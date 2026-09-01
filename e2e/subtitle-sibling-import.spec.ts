@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
+import { loadVideoByPath } from './video-path'
 
 const fixtureFilename = 'ogres-are-like-onions-XTY635NsfuQ.mp4'
 const fixturePath = fileURLToPath(new URL(`./fixtures/${fixtureFilename}`, import.meta.url))
 
-test('opens a Reference Video and its Subtitle Sibling from the File menu', async ({ page }) => {
-  test.setTimeout(15_000)
-
-  await page.route('**/api/video-picks', async (route) => {
+test('opens valid Subtitle Siblings and reports broken siblings from the File menu', async ({ page }) => {
+  await page.route('**/api/video-loads', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ path: fixturePath })
     await route.fulfill({
       contentType: 'application/json',
       json: {
@@ -22,10 +22,19 @@ test('opens a Reference Video and its Subtitle Sibling from the File menu', asyn
         subtitles: [
           {
             id: 'subtitle-1',
-            filename: 'ogres-are-like-onions-XTY635NsfuQ.srt',
+            filename: 'ogres-are-like-onions-XTY635NsfuQ.en.srt',
             infixTitle: 'English',
             mediaUrl: '/api/test-subtitle-media',
             textUrl: '/api/test-subtitle-text',
+            format: 'srt',
+            mimeType: 'application/x-subrip',
+          },
+          {
+            id: 'subtitle-broken',
+            filename: 'ogres-are-like-onions-XTY635NsfuQ.de.srt',
+            infixTitle: 'German',
+            mediaUrl: '/api/test-broken-subtitle-media',
+            textUrl: '/api/test-broken-subtitle-text',
             format: 'srt',
             mimeType: 'application/x-subrip',
           },
@@ -43,12 +52,18 @@ test('opens a Reference Video and its Subtitle Sibling from the File menu', asyn
       body: '1\n00:00:01,000 --> 00:00:03,000\nOgres are like onions.\n',
     })
   })
+  await page.route('**/api/test-broken-subtitle-text', async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      json: { error: 'subtitle file could not be read' },
+    })
+  })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'File', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Open video…' }).click()
+  await loadVideoByPath(page, fixturePath)
 
-  await expect(page.getByTestId('reference-video')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('reference-video')).toBeVisible()
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(page.getByText(/No subtitle tracks yet/)).toHaveCount(0)
   await expect(
@@ -56,4 +71,7 @@ test('opens a Reference Video and its Subtitle Sibling from the File menu', asyn
       .locator("[data-slot='timeline-workbench-canvas']")
       .locator("[data-slot='timeline-editor-track-header'][aria-label='English']"),
   ).toBeVisible()
+  await expect(
+    page.getByRole('status').filter({ hasText: 'ogres-are-like-onions-XTY635NsfuQ.de.srt' }),
+  ).toContainText('subtitle file could not be read')
 })
