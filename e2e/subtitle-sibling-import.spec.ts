@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { loadVideoByPath } from './video-path'
 
-const fixtureFilename = 'ogres-are-like-onions-XTY635NsfuQ.mp4'
+const fixtureFilename = 'acceptance-video.webm'
 const fixturePath = fileURLToPath(new URL(`./fixtures/${fixtureFilename}`, import.meta.url))
 
 test('opens valid Subtitle Siblings and reports broken siblings from the File menu', async ({ page }) => {
@@ -15,14 +15,14 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
         video: {
           id: 'video-1',
           filename: fixtureFilename,
-          stem: 'ogres-are-like-onions-XTY635NsfuQ',
+          stem: 'acceptance-video',
           mediaUrl: '/api/test-video',
-          mimeType: 'video/mp4',
+          mimeType: 'video/webm',
         },
         subtitles: [
           {
             id: 'subtitle-1',
-            filename: 'ogres-are-like-onions-XTY635NsfuQ.en.srt',
+            filename: 'acceptance-video.en.srt',
             infixTitle: 'English',
             mediaUrl: '/api/test-subtitle-media',
             textUrl: '/api/test-subtitle-text',
@@ -31,7 +31,7 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
           },
           {
             id: 'subtitle-broken',
-            filename: 'ogres-are-like-onions-XTY635NsfuQ.de.srt',
+            filename: 'acceptance-video.de.srt',
             infixTitle: 'German',
             mediaUrl: '/api/test-broken-subtitle-media',
             textUrl: '/api/test-broken-subtitle-text',
@@ -44,7 +44,7 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
     })
   })
   await page.route('**/api/test-video', async (route) => {
-    await route.fulfill({ contentType: 'video/mp4', path: fixturePath })
+    await route.fulfill({ contentType: 'video/webm', path: fixturePath })
   })
   await page.route('**/api/test-subtitle-text', async (route) => {
     await route.fulfill({
@@ -72,6 +72,6 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
       .locator("[data-slot='timeline-editor-track-header'][aria-label='English']"),
   ).toBeVisible()
   await expect(
-    page.getByRole('status').filter({ hasText: 'ogres-are-like-onions-XTY635NsfuQ.de.srt' }),
+    page.getByRole('status').filter({ hasText: 'acceptance-video.de.srt' }),
   ).toContainText('subtitle file could not be read')
 })
