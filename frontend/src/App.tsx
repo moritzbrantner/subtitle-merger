@@ -14,6 +14,7 @@ import {
   type TimelineTextItemData,
 } from '@moritzbrantner/timeline-editor/text'
 import { SubtitleExportDialog } from './SubtitleExportDialog'
+import { VideoPathDialog } from './VideoPathDialog'
 import { AppHeader } from './app/AppHeader'
 import { GenerationPanel } from './app/GenerationPanel'
 import { ReferenceVideoPreview } from './app/ReferenceVideoPreview'
@@ -31,7 +32,7 @@ import {
   type SubtitleAsset,
   type SubtitleDocument,
 } from './subtitle-session'
-import { loadSubtitleAssets, requestVideoPick, type LoadedVideo, type LoadWarning } from './video-load'
+import { loadSubtitleAssets, requestVideoLoad, type LoadedVideo, type LoadWarning } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
 import { applyAppearance, getPreferredAppearance, type Appearance } from './appearance'
 import { getMessages, getPreferredLocale, persistLocale, type Locale } from './localization'
@@ -97,7 +98,9 @@ function App() {
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
-  const [isPickingVideo, setIsPickingVideo] = useState(false)
+  const [isVideoPathDialogOpen, setIsVideoPathDialogOpen] = useState(false)
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false)
+  const [videoPathError, setVideoPathError] = useState<string>()
   const [selectedVideo, setSelectedVideo] = useState<LoadedVideo>()
   const [loadWarnings, setLoadWarnings] = useState<LoadWarning[]>([])
   const [targetLanguage, setTargetLanguage] = useState('')
@@ -105,6 +108,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
+  const videoLoadAttemptRef = useRef(0)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -129,44 +133,60 @@ function App() {
     setHistory(createEditorHistory())
     setClipboard(undefined)
     setTransportState(defaultTransportState)
-    setEmptyState(
-      nextAssets.length === 0
-        ? messages.emptyTracks
-        : undefined,
-    )
+    setEmptyState(nextAssets.length === 0 ? messages.emptyTracks : undefined)
   }
 
-  async function openVideo() {
-    setIsPickingVideo(true)
-    setLoadError(undefined)
-    setLoadWarnings([])
-    setEmptyState(undefined)
+  function openVideoDialog() {
+    setVideoPathError(undefined)
+    setIsVideoPathDialogOpen(true)
+  }
+
+  function closeVideoDialog() {
+    videoLoadAttemptRef.current += 1
+    setIsLoadingVideo(false)
+    setVideoPathError(undefined)
+    setIsVideoPathDialogOpen(false)
+  }
+
+  async function loadVideo(path: string) {
+    const attempt = videoLoadAttemptRef.current + 1
+    videoLoadAttemptRef.current = attempt
+    const isCurrentAttempt = () => videoLoadAttemptRef.current === attempt
+
+    setIsLoadingVideo(true)
+    setVideoPathError(undefined)
 
     try {
-      const result = await requestVideoPick()
+      const load = await requestVideoLoad(path)
+      if (!isCurrentAttempt()) return
 
-      if (result.status === 'cancelled') {
-        return
-      }
+      const metadata = await probeReferenceVideoMetadata(load.video.mediaUrl, messages)
+      if (!isCurrentAttempt()) return
 
-      const metadata = await probeReferenceVideoMetadata(result.load.video.mediaUrl, messages)
-      const subtitles = await loadSubtitleAssets(result.load, metadata.durationMs)
+      const subtitles = await loadSubtitleAssets(load, metadata.durationMs)
+      if (!isCurrentAttempt()) return
 
       commitLoadedSession(
         {
-          filename: result.load.video.filename,
-          mediaUrl: result.load.video.mediaUrl,
+          filename: load.video.filename,
+          mediaUrl: load.video.mediaUrl,
           durationMs: metadata.durationMs,
         },
         subtitles.assets,
       )
-      setSelectedVideo(result.load.video)
+      setSelectedVideo(load.video)
       setLoadWarnings(subtitles.warnings)
+      setLoadError(undefined)
       setGenerationMessage(undefined)
+      setIsVideoPathDialogOpen(false)
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : messages.videoLoadFailed)
+      if (isCurrentAttempt()) {
+        setVideoPathError(error instanceof Error ? error.message : messages.videoLoadFailed)
+      }
     } finally {
-      setIsPickingVideo(false)
+      if (isCurrentAttempt()) {
+        setIsLoadingVideo(false)
+      }
     }
   }
 
@@ -239,8 +259,7 @@ function App() {
         messages={messages}
         locale={locale}
         appearance={appearance}
-        isPickingVideo={isPickingVideo}
-        onOpenVideo={() => void openVideo()}
+        onOpenVideo={openVideoDialog}
         onOpenExport={() => setIsExportDialogOpen(true)}
         onLocaleChange={setLocale}
         onAppearanceChange={setAppearance}
@@ -303,6 +322,16 @@ function App() {
           />
         </section>
       </div>
+
+      <VideoPathDialog
+        open={isVideoPathDialogOpen}
+        messages={messages}
+        isLoading={isLoadingVideo}
+        error={videoPathError}
+        onClearError={() => setVideoPathError(undefined)}
+        onClose={closeVideoDialog}
+        onLoad={(path) => void loadVideo(path)}
+      />
 
       <SubtitleExportDialog
         open={isExportDialogOpen}

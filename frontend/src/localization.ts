@@ -9,6 +9,13 @@ export type AppMessages = {
   file: string
   opening: string
   openVideo: string
+  openVideoEyebrow: string
+  openVideoHeading: string
+  closeVideoDialog: string
+  videoPathLabel: string
+  videoPathHelp: string
+  videoPathRequired: string
+  loadVideo: string
   exportSubtitles: string
   language: string
   appearance: string
@@ -67,6 +74,14 @@ const messages: Record<Locale, AppMessages> = {
     file: 'File',
     opening: 'Opening…',
     openVideo: 'Open video…',
+    openVideoEyebrow: 'Open video',
+    openVideoHeading: 'Load a video by absolute path',
+    closeVideoDialog: 'Close video dialog',
+    videoPathLabel: 'Absolute video path',
+    videoPathHelp:
+      'Enter an absolute path on this machine so Subtitle Merger can discover nearby subtitle files.',
+    videoPathRequired: 'Enter an absolute video path.',
+    loadVideo: 'Load video',
     exportSubtitles: 'Export subtitles…',
     language: 'Language',
     appearance: 'Appearance',
@@ -122,6 +137,14 @@ const messages: Record<Locale, AppMessages> = {
     file: 'Datei',
     opening: 'Wird geöffnet…',
     openVideo: 'Video öffnen…',
+    openVideoEyebrow: 'Video öffnen',
+    openVideoHeading: 'Video über absoluten Pfad laden',
+    closeVideoDialog: 'Videodialog schließen',
+    videoPathLabel: 'Absoluter Videopfad',
+    videoPathHelp:
+      'Gib einen absoluten Pfad auf diesem Rechner ein, damit Subtitle Merger benachbarte Untertiteldateien finden kann.',
+    videoPathRequired: 'Gib einen absoluten Videopfad ein.',
+    loadVideo: 'Video laden',
     exportSubtitles: 'Untertitel exportieren…',
     language: 'Sprache',
     appearance: 'Darstellung',
@@ -177,6 +200,14 @@ const messages: Record<Locale, AppMessages> = {
     file: 'Archivo',
     opening: 'Abriendo…',
     openVideo: 'Abrir vídeo…',
+    openVideoEyebrow: 'Abrir vídeo',
+    openVideoHeading: 'Cargar un vídeo por ruta absoluta',
+    closeVideoDialog: 'Cerrar diálogo de vídeo',
+    videoPathLabel: 'Ruta absoluta del vídeo',
+    videoPathHelp:
+      'Introduce una ruta absoluta en este equipo para que Subtitle Merger pueda encontrar archivos de subtítulos cercanos.',
+    videoPathRequired: 'Introduce una ruta absoluta del vídeo.',
+    loadVideo: 'Cargar vídeo',
     exportSubtitles: 'Exportar subtítulos…',
     language: 'Idioma',
     appearance: 'Apariencia',

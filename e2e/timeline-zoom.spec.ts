@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
+import { loadVideoByPath } from './video-path'
 
 const fixtureFilename = 'long-duration-90m.mp4'
 const fixturePath = fileURLToPath(new URL(`./fixtures/${fixtureFilename}`, import.meta.url))
@@ -8,7 +9,8 @@ test('maximum zoom out fits the Reference Video and keeps the zoom control reada
   page,
 }) => {
   await page.setViewportSize({ width: 1657, height: 505 })
-  await page.route('**/api/video-picks', async (route) => {
+  await page.route('**/api/video-loads', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ path: fixturePath })
     await route.fulfill({
       contentType: 'application/json',
       json: {
@@ -55,8 +57,7 @@ test('maximum zoom out fits the Reference Video and keeps the zoom control reada
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'File', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Open video…' }).click()
+  await loadVideoByPath(page, fixturePath)
   await expect(page.getByTestId('reference-video')).toBeVisible()
 
   const zoomSlider = page.getByRole('slider')

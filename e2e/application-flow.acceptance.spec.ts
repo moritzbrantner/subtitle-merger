@@ -1,6 +1,7 @@
 import { expect, test, type ConsoleMessage, type Response } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { loadVideoByPath } from './video-path'
 
 const fixtureFilename = 'acceptance-video.webm'
 const fixturePath = fileURLToPath(new URL(`./fixtures/${fixtureFilename}`, import.meta.url))
@@ -90,7 +91,8 @@ test('opens, generates, edits and exports subtitles through the application shel
     if (response.status() >= 400) errorResponses.push(describeErrorResponse(response))
   })
 
-  await page.route('**/api/video-picks', async (route) => {
+  await page.route('**/api/video-loads', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ path: fixturePath })
     await route.fulfill({
       contentType: 'application/json',
       json: {
@@ -148,8 +150,7 @@ test('opens, generates, edits and exports subtitles through the application shel
     )
   }
 
-  await fileButton.click()
-  await page.getByRole('menuitem', { name: 'Open video…' }).click()
+  await loadVideoByPath(page, fixturePath)
 
   await expect(page.getByTestId('reference-video')).toBeVisible()
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
