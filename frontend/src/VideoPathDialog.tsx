@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AppMessages } from './localization'
 import './VideoPathDialog.css'
 
@@ -35,15 +35,10 @@ export function VideoPathDialog({
   const pathInputRef = useRef<HTMLInputElement>(null)
   const wasOpenRef = useRef(false)
   const onCloseRef = useRef(onClose)
-  const isLoadingRef = useRef(isLoading)
 
   useEffect(() => {
     onCloseRef.current = onClose
   }, [onClose])
-
-  useEffect(() => {
-    isLoadingRef.current = isLoading
-  }, [isLoading])
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current
@@ -81,10 +76,8 @@ export function VideoPathDialog({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (!isLoadingRef.current) {
-          event.preventDefault()
-          onCloseRef.current()
-        }
+        event.preventDefault()
+        onCloseRef.current()
         return
       }
 
@@ -139,7 +132,7 @@ export function VideoPathDialog({
 
   const displayedError = validationError ?? error
 
-  function submitPath(event: React.FormEvent<HTMLFormElement>) {
+  function submitPath(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const normalizedPath = path.trim()
 
@@ -158,7 +151,7 @@ export function VideoPathDialog({
       className="video-path-overlay"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !isLoading) {
+        if (event.target === event.currentTarget) {
           onClose()
         }
       }}
@@ -179,7 +172,6 @@ export function VideoPathDialog({
             className="video-path-close"
             type="button"
             aria-label={messages.closeVideoDialog}
-            disabled={isLoading}
             onClick={onClose}
           >
             ×
@@ -213,12 +205,7 @@ export function VideoPathDialog({
           ) : null}
 
           <div className="video-path-actions">
-            <button
-              type="button"
-              className="video-path-secondary"
-              disabled={isLoading}
-              onClick={onClose}
-            >
+            <button type="button" className="video-path-secondary" onClick={onClose}>
               {messages.cancel}
             </button>
             <button type="submit" className="video-path-primary" disabled={isLoading}>
