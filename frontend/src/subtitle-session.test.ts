@@ -39,6 +39,23 @@ describe('buildSubtitleSession', () => {
     expect(session.document.durationMs).toBe(90_000)
   })
 
+  it('makes one item span the complete cue sequence rather than the Reference Video', () => {
+    const asset = subtitleAsset('en', 'English', 3_000)
+    asset.durationMs = 90_000
+    asset.data!.cues = [
+      { startMs: 1_000, endMs: 2_000, text: 'First' },
+      { startMs: 2_250, endMs: 3_000, text: 'Second' },
+    ]
+
+    const session = buildSubtitleSession(90_000, [asset])
+    const item = session.document.tracks[0]?.items[0]
+
+    expect(item?.startMs).toBe(0)
+    expect(item?.durationMs).toBe(3_000)
+    expect(item?.data?.cues).toHaveLength(2)
+    expect(session.document.durationMs).toBe(90_000)
+  })
+
   it('adds stable speaker summaries to diarized track labels', () => {
     const asset = subtitleAsset('en', 'English', 10_000)
     asset.data!.cues = [
