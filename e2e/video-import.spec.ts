@@ -80,10 +80,11 @@ test('loads a Reference Video by absolute path with an observable loading state'
     })),
   ).toEqual({ controls: false, loop: false })
 
-  const loopButton = page.getByRole('button', { name: 'Loop' })
-  await loopButton.click()
-  await expect(loopButton).toHaveAttribute('aria-pressed', 'true')
-  expect(await referenceVideo.evaluate((video) => (video as HTMLVideoElement).loop)).toBe(false)
+  await page.getByRole('button', { name: 'Jump to end' }).click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(1.5)
+
+  await page.getByRole('button', { name: 'Jump to start' }).click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(0.1)
 
   const shuttleForward = page.getByRole('button', { name: 'Shuttle forward' })
   await shuttleForward.click()
@@ -96,11 +97,10 @@ test('loads a Reference Video by absolute path with an observable loading state'
   await page.getByRole('button', { name: 'Pause' }).click()
   await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true)
 
-  await page.getByRole('button', { name: 'Jump to end' }).click()
-  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(1.5)
-
-  await page.getByRole('button', { name: 'Jump to start' }).click()
-  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(0.1)
+  const loopButton = page.getByRole('button', { name: 'Loop' })
+  await loopButton.click()
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'true')
+  expect(await referenceVideo.evaluate((video) => (video as HTMLVideoElement).loop)).toBe(false)
 })
 
 test('keeps the previous subtitle session when a later API or metadata load fails', async ({ page }) => {
