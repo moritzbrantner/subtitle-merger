@@ -58,6 +58,7 @@ export function buildSubtitleSession(
     const trackId = `subtitle-${asset.id}`
     const speakers = getSpeakers(asset)
     const trackLabel = getTrackLabel(asset, speakers)
+    const cueSequenceDurationMs = Math.max(getLastCueEndMs(asset), 1)
 
     return {
       id: trackId,
@@ -75,7 +76,7 @@ export function buildSubtitleSession(
           trackId,
           label: trackLabel,
           startMs: 0,
-          durationMs: asset.durationMs,
+          durationMs: cueSequenceDurationMs,
           kind: 'text',
           color: asset.color,
           data: asset.data,
