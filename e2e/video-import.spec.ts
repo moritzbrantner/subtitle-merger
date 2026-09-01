@@ -66,11 +66,41 @@ test('loads a Reference Video by absolute path with an observable loading state'
 
   await expect(dialog).toHaveCount(0)
   const timelineCanvas = page.locator("[data-slot='timeline-workbench-canvas']")
-  await expect(page.getByTestId('reference-video')).toBeVisible()
+  const referenceVideo = page.getByTestId('reference-video')
+  await expect(referenceVideo).toBeVisible()
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(timelineCanvas.getByRole('button', { name: fixtureFilename, exact: true })).toHaveCount(0)
   await expect(page.locator("[data-slot='timeline-workbench-assets']")).toHaveCount(0)
   await expect(page.getByRole('status')).toContainText('No subtitle tracks yet')
+
+  expect(
+    await referenceVideo.evaluate((video) => ({
+      controls: (video as HTMLVideoElement).controls,
+      loop: (video as HTMLVideoElement).loop,
+    })),
+  ).toEqual({ controls: false, loop: false })
+
+  const loopButton = page.getByRole('button', { name: 'Loop' })
+  await loopButton.click()
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'true')
+  expect(await referenceVideo.evaluate((video) => (video as HTMLVideoElement).loop)).toBe(false)
+
+  const shuttleForward = page.getByRole('button', { name: 'Shuttle forward' })
+  await shuttleForward.click()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).paused)).toBe(false)
+
+  await shuttleForward.click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).playbackRate)).toBe(2)
+
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true)
+
+  await page.getByRole('button', { name: 'Jump to end' }).click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(1.5)
+
+  await page.getByRole('button', { name: 'Jump to start' }).click()
+  await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(0.1)
 })
 
 test('keeps the previous subtitle session when a later path load fails', async ({ page }) => {
