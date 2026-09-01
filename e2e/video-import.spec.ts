@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { loadVideoByPath, openVideoPathDialog } from './video-path'
 
-const fixtureFilename = 'ogres-are-like-onions-XTY635NsfuQ.mp4'
+const fixtureFilename = 'acceptance-video.webm'
 const fixturePath = fileURLToPath(new URL(`./fixtures/${fixtureFilename}`, import.meta.url))
 
 const loadedVideo = {
@@ -10,9 +10,9 @@ const loadedVideo = {
   video: {
     id: 'video-1',
     filename: fixtureFilename,
-    stem: 'ogres-are-like-onions-XTY635NsfuQ',
+    stem: 'acceptance-video',
     mediaUrl: '/api/test-video',
-    mimeType: 'video/mp4',
+    mimeType: 'video/webm',
   },
   subtitles: [],
   warnings: [],
@@ -52,7 +52,7 @@ test('loads a Reference Video by absolute path with an observable loading state'
     await route.fulfill({ contentType: 'application/json', json: loadedVideo })
   })
   await page.route('**/api/test-video', async (route) => {
-    await route.fulfill({ contentType: 'video/mp4', path: fixturePath })
+    await route.fulfill({ contentType: 'video/webm', path: fixturePath })
   })
   await page.goto('/')
 
@@ -74,8 +74,8 @@ test('loads a Reference Video by absolute path with an observable loading state'
 })
 
 test('keeps the previous subtitle session when a later path load fails', async ({ page }) => {
-  const firstPath = '/fixtures/working-video.mp4'
-  const missingPath = '/fixtures/missing-video.mp4'
+  const firstPath = '/fixtures/working-video.webm'
+  const missingPath = '/fixtures/missing-video.webm'
 
   await page.route('**/api/video-loads', async (route) => {
     const request = route.request().postDataJSON() as { path: string }
@@ -109,7 +109,7 @@ test('keeps the previous subtitle session when a later path load fails', async (
     })
   })
   await page.route('**/api/test-video', async (route) => {
-    await route.fulfill({ contentType: 'video/mp4', path: fixturePath })
+    await route.fulfill({ contentType: 'video/webm', path: fixturePath })
   })
   await page.route('**/api/test-subtitle-text', async (route) => {
     await route.fulfill({
