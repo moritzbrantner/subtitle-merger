@@ -132,6 +132,8 @@ test('keeps the previous subtitle session when a later path load fails', async (
   await dialog.getByRole('button', { name: 'Load video' }).click()
 
   await expect(dialog.getByRole('alert')).toHaveText('Video path does not exist.')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(englishTrack).toBeVisible()
 })
