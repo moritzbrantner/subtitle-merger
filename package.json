@@ -17,6 +17,7 @@
     "test:backend": "cargo test --manifest-path backend/Cargo.toml",
     "acceptance:fixture": "bun e2e/prepare-acceptance-video.ts",
     "test:acceptance": "bun run acceptance:fixture && bunx playwright test e2e/application-flow.acceptance.spec.ts --config playwright.acceptance.config.ts --retries=0",
+    "test:e2e:video-load": "bun run acceptance:fixture && bunx playwright test e2e/video-import.spec.ts e2e/subtitle-sibling-import.spec.ts --retries=0",
     "e2e:fixture": "bun e2e/prepare-real-video.ts",
     "test:e2e": "bun run e2e:fixture && bunx playwright test"
   },
