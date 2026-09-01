@@ -103,9 +103,10 @@ test('loads a Reference Video by absolute path with an observable loading state'
   await expect.poll(() => referenceVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(0.1)
 })
 
-test('keeps the previous subtitle session when a later path load fails', async ({ page }) => {
+test('keeps the previous subtitle session when a later API or metadata load fails', async ({ page }) => {
   const firstPath = '/fixtures/working-video.webm'
   const missingPath = '/fixtures/missing-video.webm'
+  const brokenMetadataPath = '/fixtures/broken-metadata.webm'
 
   await page.route('**/api/video-loads', async (route) => {
     const request = route.request().postDataJSON() as { path: string }
@@ -115,6 +116,22 @@ test('keeps the previous subtitle session when a later path load fails', async (
         status: 400,
         contentType: 'application/json',
         json: { error: 'Video path does not exist.' },
+      })
+      return
+    }
+
+    if (request.path === brokenMetadataPath) {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: {
+          ...loadedVideo,
+          video: {
+            ...loadedVideo.video,
+            id: 'video-broken-metadata',
+            filename: 'broken-metadata.webm',
+            mediaUrl: '/api/broken-metadata-video',
+          },
+        },
       })
       return
     }
@@ -141,6 +158,9 @@ test('keeps the previous subtitle session when a later path load fails', async (
   await page.route('**/api/test-video', async (route) => {
     await route.fulfill({ contentType: 'video/webm', path: fixturePath })
   })
+  await page.route('**/api/broken-metadata-video', async (route) => {
+    await route.fulfill({ status: 404, body: 'missing video' })
+  })
   await page.route('**/api/test-subtitle-text', async (route) => {
     await route.fulfill({
       contentType: 'application/x-subrip',
@@ -157,11 +177,21 @@ test('keeps the previous subtitle session when a later path load fails', async (
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(englishTrack).toBeVisible()
 
-  const dialog = await openVideoPathDialog(page)
+  let dialog = await openVideoPathDialog(page)
   await dialog.getByRole('textbox', { name: 'Absolute video path' }).fill(missingPath)
   await dialog.getByRole('button', { name: 'Load video' }).click()
 
   await expect(dialog.getByRole('alert')).toHaveText('Video path does not exist.')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
+  await expect(englishTrack).toBeVisible()
+
+  dialog = await openVideoPathDialog(page)
+  await dialog.getByRole('textbox', { name: 'Absolute video path' }).fill(brokenMetadataPath)
+  await dialog.getByRole('button', { name: 'Load video' }).click()
+
+  await expect(dialog.getByRole('alert')).toHaveText('Could not load this video.')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
