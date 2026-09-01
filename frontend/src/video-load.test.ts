@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadSubtitleAssets, requestVideoPick, type VideoLoadResponse } from './video-load'
+import { loadSubtitleAssets, requestVideoLoad, type VideoLoadResponse } from './video-load'
 
 const load: VideoLoadResponse = {
   loadId: 'load-1',
@@ -24,17 +24,27 @@ const load: VideoLoadResponse = {
   warnings: [],
 }
 
-describe('requestVideoPick', () => {
-  it('validates and returns a backend-owned video pick', async () => {
-    const result = await requestVideoPick(async () => Response.json(load))
+describe('requestVideoLoad', () => {
+  it('loads an absolute path through the backend path API', async () => {
+    const result = await requestVideoLoad('  /media/movie.webm  ', async (input, init) => {
+      expect(String(input)).toBe('/api/video-loads')
+      expect(init).toMatchObject({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: '/media/movie.webm' }),
+      })
+      return Response.json(load)
+    })
 
-    expect(result).toEqual({ status: 'loaded', load })
+    expect(result).toEqual(load)
   })
 
-  it('represents a cancelled native picker without an error', async () => {
-    const result = await requestVideoPick(async () => new Response(null, { status: 204 }))
-
-    expect(result).toEqual({ status: 'cancelled' })
+  it('surfaces a backend path validation error', async () => {
+    await expect(
+      requestVideoLoad('/missing/movie.webm', async () =>
+        Response.json({ error: 'video path does not exist' }, { status: 400 }),
+      ),
+    ).rejects.toThrow('video path does not exist')
   })
 })
 
@@ -56,5 +66,36 @@ describe('loadSubtitleAssets', () => {
         cues: [{ startMs: 1_000, endMs: 3_000, text: 'Ogres are like onions.' }],
       },
     })
+  })
+
+  it('keeps valid Subtitle Siblings when another sibling fails to load', async () => {
+    const mixedLoad: VideoLoadResponse = {
+      ...load,
+      subtitles: [
+        load.subtitles[0]!,
+        {
+          id: 'subtitle-broken',
+          filename: 'movie.de.srt',
+          infixTitle: 'de',
+          mediaUrl: '/api/media/subtitle-broken',
+          textUrl: '/api/subtitles/subtitle-broken',
+          format: 'srt',
+          mimeType: 'application/x-subrip',
+        },
+      ],
+    }
+
+    const result = await loadSubtitleAssets(mixedLoad, 90_000, async (input) => {
+      if (String(input).endsWith('/subtitle-broken')) {
+        return Response.json({ error: 'subtitle file could not be read' }, { status: 500 })
+      }
+
+      return new Response('1\n00:00:01,000 --> 00:00:03,000\nOgres are like onions.\n')
+    })
+
+    expect(result.assets.map((asset) => asset.id)).toEqual(['subtitle-1'])
+    expect(result.warnings).toEqual([
+      { filename: 'movie.de.srt', message: 'subtitle file could not be read' },
+    ])
   })
 })
