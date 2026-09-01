@@ -35,10 +35,6 @@ export type VideoLoadResponse = {
   warnings: LoadWarning[]
 }
 
-export type VideoPickResult =
-  | { status: 'cancelled' }
-  | { status: 'loaded'; load: VideoLoadResponse }
-
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,20 +119,22 @@ export async function readApiError(response: Response): Promise<string> {
   return response.statusText || 'Request failed.'
 }
 
-export async function requestVideoPick(fetcher: Fetch = fetch): Promise<VideoPickResult> {
-  const response = await fetcher('/api/video-picks', { method: 'POST' })
-
-  if (response.status === 204) {
-    return { status: 'cancelled' }
-  }
+export async function requestVideoLoad(
+  path: string,
+  fetcher: Fetch = fetch,
+): Promise<VideoLoadResponse> {
+  const response = await fetcher('/api/video-loads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: path.trim() }),
+  })
 
   if (!response.ok) {
     throw new Error(await readApiError(response))
   }
 
   const value: unknown = await response.json()
-
-  return { status: 'loaded', load: parseVideoLoadResponse(value) }
+  return parseVideoLoadResponse(value)
 }
 
 function toTimelineTextFormat(format: string): TimelineTextFormat | undefined {
