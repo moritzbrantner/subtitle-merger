@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
+import { routeRangeMedia } from './range-media'
 import { loadVideoByPath, openVideoPathDialog } from './video-path'
 
 const fixtureFilename = 'acceptance-video.webm'
@@ -51,9 +52,7 @@ test('loads a Reference Video by absolute path with an observable loading state'
     await pendingLoad
     await route.fulfill({ contentType: 'application/json', json: loadedVideo })
   })
-  await page.route('**/api/test-video', async (route) => {
-    await route.fulfill({ contentType: 'video/webm', path: fixturePath })
-  })
+  await routeRangeMedia(page, '**/api/test-video', fixturePath, 'video/webm')
   await page.goto('/')
 
   const dialog = await openVideoPathDialog(page)
@@ -155,9 +154,7 @@ test('keeps the previous subtitle session when a later API or metadata load fail
       },
     })
   })
-  await page.route('**/api/test-video', async (route) => {
-    await route.fulfill({ contentType: 'video/webm', path: fixturePath })
-  })
+  await routeRangeMedia(page, '**/api/test-video', fixturePath, 'video/webm')
   await page.route('**/api/broken-metadata-video', async (route) => {
     await route.fulfill({ status: 404, body: 'missing video' })
   })
