@@ -11,7 +11,6 @@ type AppHeaderProps = {
   messages: AppMessages
   locale: Locale
   appearance: Appearance
-  isPickingVideo: boolean
   onOpenVideo: () => void
   onOpenExport: () => void
   onLocaleChange: (locale: Locale) => void
@@ -22,7 +21,6 @@ export function AppHeader({
   messages,
   locale,
   appearance,
-  isPickingVideo,
   onOpenVideo,
   onOpenExport,
   onLocaleChange,
@@ -53,13 +51,12 @@ export function AppHeader({
             <button
               type="button"
               role="menuitem"
-              disabled={isPickingVideo}
               onClick={() => {
                 setIsFileMenuOpen(false)
                 onOpenVideo()
               }}
             >
-              {isPickingVideo ? messages.opening : messages.openVideo}
+              {messages.openVideo}
             </button>
             <button
               type="button"
