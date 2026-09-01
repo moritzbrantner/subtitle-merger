@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TimelineWorkbenchTransportState } from '@moritzbrantner/timeline-editor'
 import type { AppMessages } from '../localization'
 import type { ReferenceVideo } from './reference-video'
@@ -15,6 +15,7 @@ type ReferenceVideoPreviewProps = {
 const followerSeekThresholdMs = 400
 const pausedSeekThresholdMs = 40
 const startupSeekThresholdMs = 80
+const finalSeekGuardSeconds = 0.001
 
 export function ReferenceVideoPreview({
   referenceVideo,
@@ -27,15 +28,22 @@ export function ReferenceVideoPreview({
   const playbackStartedRef = useRef(false)
   const previousTimelineTimeRef = useRef(currentTimeMs)
   const previousTransportRef = useRef(transportState)
+  const [mediaReadyVersion, setMediaReadyVersion] = useState(0)
 
   useEffect(() => {
     const video = videoRef.current
 
     if (!video || !referenceVideo) return
 
+    const referenceDurationSeconds = Math.max(referenceVideo.durationMs / 1_000, 0)
+    const mediaDurationSeconds =
+      Number.isFinite(video.duration) && video.duration > 0
+        ? Math.min(video.duration, referenceDurationSeconds)
+        : referenceDurationSeconds
+    const finalPlayableTimeSeconds = Math.max(mediaDurationSeconds - finalSeekGuardSeconds, 0)
     const nextTimeSeconds = Math.min(
       Math.max(currentTimeMs / 1_000, 0),
-      referenceVideo.durationMs / 1_000,
+      finalPlayableTimeSeconds,
     )
     const driftMs = Math.abs(video.currentTime - nextTimeSeconds) * 1_000
     const previousTimelineTimeMs = previousTimelineTimeRef.current
@@ -89,7 +97,14 @@ export function ReferenceVideoPreview({
     }
 
     rememberSnapshot()
-  }, [currentTimeMs, messages.playbackBlocked, onError, referenceVideo, transportState])
+  }, [
+    currentTimeMs,
+    mediaReadyVersion,
+    messages.playbackBlocked,
+    onError,
+    referenceVideo,
+    transportState,
+  ])
 
   if (!referenceVideo) return null
 
@@ -105,6 +120,7 @@ export function ReferenceVideoPreview({
         data-testid="reference-video"
         src={referenceVideo.mediaUrl}
         preload="metadata"
+        onLoadedMetadata={() => setMediaReadyVersion((version) => version + 1)}
         onError={() => onError(messages.referenceVideoFailed)}
       />
     </section>
