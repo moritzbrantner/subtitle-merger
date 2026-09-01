@@ -108,6 +108,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
+  const videoLoadAttemptRef = useRef(0)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -140,14 +141,30 @@ function App() {
     setIsVideoPathDialogOpen(true)
   }
 
+  function closeVideoDialog() {
+    videoLoadAttemptRef.current += 1
+    setIsLoadingVideo(false)
+    setVideoPathError(undefined)
+    setIsVideoPathDialogOpen(false)
+  }
+
   async function loadVideo(path: string) {
+    const attempt = videoLoadAttemptRef.current + 1
+    videoLoadAttemptRef.current = attempt
+    const isCurrentAttempt = () => videoLoadAttemptRef.current === attempt
+
     setIsLoadingVideo(true)
     setVideoPathError(undefined)
 
     try {
       const load = await requestVideoLoad(path)
+      if (!isCurrentAttempt()) return
+
       const metadata = await probeReferenceVideoMetadata(load.video.mediaUrl, messages)
+      if (!isCurrentAttempt()) return
+
       const subtitles = await loadSubtitleAssets(load, metadata.durationMs)
+      if (!isCurrentAttempt()) return
 
       commitLoadedSession(
         {
@@ -163,9 +180,13 @@ function App() {
       setGenerationMessage(undefined)
       setIsVideoPathDialogOpen(false)
     } catch (error) {
-      setVideoPathError(error instanceof Error ? error.message : messages.videoLoadFailed)
+      if (isCurrentAttempt()) {
+        setVideoPathError(error instanceof Error ? error.message : messages.videoLoadFailed)
+      }
     } finally {
-      setIsLoadingVideo(false)
+      if (isCurrentAttempt()) {
+        setIsLoadingVideo(false)
+      }
     }
   }
 
@@ -308,7 +329,7 @@ function App() {
         isLoading={isLoadingVideo}
         error={videoPathError}
         onClearError={() => setVideoPathError(undefined)}
-        onClose={() => setIsVideoPathDialogOpen(false)}
+        onClose={closeVideoDialog}
         onLoad={(path) => void loadVideo(path)}
       />
 
