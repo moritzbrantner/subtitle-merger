@@ -104,22 +104,55 @@ mod tests {
     }
 
     #[test]
+    fn every_job_state_has_a_stable_wire_value() {
+        let cases = [
+            (JobState::Queued, "queued"),
+            (JobState::Running, "running"),
+            (JobState::Completed, "completed"),
+            (JobState::Cancelled, "cancelled"),
+            (JobState::Failed, "failed"),
+        ];
+
+        for (state, expected) in cases {
+            assert_eq!(serde_json::to_value(state).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn every_job_phase_has_a_stable_wire_value() {
+        let cases = [
+            (JobPhase::Queued, "queued"),
+            (JobPhase::Decoding, "decoding"),
+            (JobPhase::DetectingSpeech, "detectingSpeech"),
+            (JobPhase::Transcribing, "transcribing"),
+            (JobPhase::Aligning, "aligning"),
+            (JobPhase::Diarizing, "diarizing"),
+            (JobPhase::Translating, "translating"),
+            (JobPhase::WritingOutput, "writingOutput"),
+            (JobPhase::Completed, "completed"),
+            (JobPhase::Cancelled, "cancelled"),
+            (JobPhase::Failed, "failed"),
+        ];
+
+        for (phase, expected) in cases {
+            assert_eq!(serde_json::to_value(phase).unwrap(), expected);
+        }
+    }
+
+    #[test]
     fn native_tasks_map_to_application_phases() {
-        assert_eq!(
-            phase_for_task(TranscriptionProgressTask::Decode),
-            JobPhase::Decoding
-        );
-        assert_eq!(
-            phase_for_task(TranscriptionProgressTask::Vad),
-            JobPhase::DetectingSpeech
-        );
-        assert_eq!(
-            phase_for_task(TranscriptionProgressTask::Diarization),
-            JobPhase::Diarizing
-        );
-        assert_eq!(
-            phase_for_task(TranscriptionProgressTask::Translation),
-            JobPhase::Translating
-        );
+        let cases = [
+            (TranscriptionProgressTask::Decode, JobPhase::Decoding),
+            (TranscriptionProgressTask::Vad, JobPhase::DetectingSpeech),
+            (TranscriptionProgressTask::Asr, JobPhase::Transcribing),
+            (TranscriptionProgressTask::Alignment, JobPhase::Aligning),
+            (TranscriptionProgressTask::Diarization, JobPhase::Diarizing),
+            (TranscriptionProgressTask::Translation, JobPhase::Translating),
+            (TranscriptionProgressTask::Output, JobPhase::WritingOutput),
+        ];
+
+        for (task, expected) in cases {
+            assert_eq!(phase_for_task(task), expected);
+        }
     }
 }
