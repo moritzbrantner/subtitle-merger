@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "profile": "repository-foundation-v1",
+  "tiers": {
+    "fast": ["lint", "build", "test:unit"],
+    "full": ["lint", "build", "test:unit", "test:e2e"]
+  },
+  "requiredCapabilities": ["lint", "build", "test:unit"],
+  "optionalCapabilities": ["test:e2e"],
+  "capabilityCommands": {
+    "subtitle-merger": {
+      "lint": ["bun", "run", "--cwd", "frontend", "lint"],
+      "test:unit": ["bash", "-lc", "bun run --cwd frontend test && cargo test --manifest-path backend/Cargo.toml"],
+      "test:e2e": ["bun", "run", "test:e2e"]
+    }
+  }
+}
