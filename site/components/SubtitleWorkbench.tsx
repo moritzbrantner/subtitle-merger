@@ -32,8 +32,19 @@ function downloadName(track: Track, extension: string) {
   return `${slug || "subtitles"}.${extension}`;
 }
 
+function formatByteCount(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const inspectionAbortRef = useRef<AbortController | null>(null);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -52,6 +63,10 @@ export function SubtitleWorkbench() {
       }
     };
   }, [videoUrl]);
+
+  useEffect(() => {
+    return () => inspectionAbortRef.current?.abort();
+  }, []);
 
   const durationMs = useMemo(
     () =>
@@ -85,6 +100,10 @@ export function SubtitleWorkbench() {
       return;
     }
 
+    inspectionAbortRef.current?.abort();
+    const controller = new AbortController();
+    inspectionAbortRef.current = controller;
+
     setBusy("Inspecting video container with Rust/WASM…");
     setError("");
     setWarnings([]);
@@ -96,7 +115,18 @@ export function SubtitleWorkbench() {
     setVideoUrl(URL.createObjectURL(file));
 
     try {
-      const result = await inspectVideo(file);
+      const result = await inspectVideo(
+        file,
+        ({ phase, transferred }) => {
+          if (inspectionAbortRef.current === controller) {
+            setBusy(`${phase}… ${formatByteCount(transferred)} read locally`);
+          }
+        },
+        controller.signal,
+      );
+      if (inspectionAbortRef.current !== controller) {
+        return;
+      }
       const embeddedTracks: Track[] = result.tracks.map((track) => ({
         ...track,
         enabled: true,
@@ -116,9 +146,17 @@ export function SubtitleWorkbench() {
         setSelectedTrackId(embeddedTracks[0].id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The video could not be inspected.");
+      if (cause instanceof DOMException && cause.name === "AbortError") {
+        return;
+      }
+      if (inspectionAbortRef.current === controller) {
+        setError(cause instanceof Error ? cause.message : "The video could not be inspected.");
+      }
     } finally {
-      setBusy("");
+      if (inspectionAbortRef.current === controller) {
+        inspectionAbortRef.current = null;
+        setBusy("");
+      }
     }
   }
 
@@ -409,7 +447,7 @@ export function SubtitleWorkbench() {
           MP4/MOV extraction covers tx3g, WebVTT (wvtt), and TTML (stpp). Matroska/WebM covers UTF-8, WebVTT, ASS/SSA, and USF text tracks. PGS, VobSub, and other bitmap subtitle codecs are reported as unsupported rather than silently discarded.
         </p>
         <p>
-          The current WASM boundary reads the selected file into browser memory, so very large videos require memory roughly proportional to file size. No server fallback is used.
+          Video inspection runs in a Web Worker and streams only the byte ranges requested by Rust. MP4 metadata reads are capped at 64 MiB, coalesced subtitle-sample reads at 4 MiB, and Matroska subtitle blocks at 16 MiB. No server fallback is used.
         </p>
       </section>
     </div>
