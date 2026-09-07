@@ -7,10 +7,16 @@ type WasmExports = {
   parse_subtitle: (ptr: number, len: number) => bigint;
 };
 
+export type VideoInspectionProgress = {
+  phase: string;
+  transferred: number;
+  fileSize: number;
+};
+
 type WorkerMessage =
   | { type: "result"; inspection: VideoInspection }
   | { type: "error"; message: string }
-  | { type: "progress"; phase: string; transferred: number; fileSize: number };
+  | ({ type: "progress" } & VideoInspectionProgress);
 
 let exportsPromise: Promise<WasmExports> | undefined;
 
@@ -67,7 +73,10 @@ async function invokeSubtitle(bytes: Uint8Array): Promise<ParsedSubtitle> {
   }
 }
 
-export async function inspectVideo(file: File): Promise<VideoInspection> {
+export async function inspectVideo(
+  file: File,
+  onProgress?: (progress: VideoInspectionProgress) => void,
+): Promise<VideoInspection> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(`${basePath()}/video-inspection-worker.js`);
     const finish = () => worker.terminate();
@@ -79,6 +88,12 @@ export async function inspectVideo(file: File): Promise<VideoInspection> {
       } else if (message.type === "error") {
         finish();
         reject(new Error(message.message));
+      } else if (message.type === "progress") {
+        onProgress?.({
+          phase: message.phase,
+          transferred: message.transferred,
+          fileSize: message.fileSize,
+        });
       }
     };
     worker.onerror = (event) => {
