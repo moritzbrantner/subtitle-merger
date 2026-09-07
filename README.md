@@ -67,7 +67,7 @@ bun run --cwd site dev
 
 The static site accepts one Reference Video plus multiple SRT, WebVTT, ASS, or SSA files. The Rust/WASM boundary parses uploaded subtitle files and inspects MP4/MOV and Matroska/WebM containers for embedded text subtitle tracks. Supported embedded text codecs are extracted into ordinary browser-local Subtitle Tracks; bitmap codecs such as PGS and VobSub are reported explicitly rather than silently ignored.
 
-No application API is called by the Pages build and there is no upload fallback: the selected media bytes remain in the browser. The first implementation reads the selected video into WebAssembly memory, so large files require browser memory proportional to file size.
+No application API is called by the Pages build and there is no upload fallback: the selected media bytes remain in the browser. Video inspection runs in a Web Worker through a Rust-owned pull protocol. The browser services only exact `File.slice()` ranges requested by Rust, so large media payloads are not copied wholesale into WebAssembly memory. MP4 metadata reads are capped at 64 MiB, coalesced subtitle-sample reads at 4 MiB, and Matroska subtitle-block reads at 16 MiB.
 
 Build the exact static export used by GitHub Pages with:
 
