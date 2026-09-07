@@ -546,7 +546,8 @@ impl RangeInspection {
                     });
                 }
                 0xA3 => {
-                    self.request_matroska_block_prefix(header, *time, None)?;
+                    let cluster_time = *time;
+                    self.request_matroska_block_prefix(header, cluster_time, None)?;
                 }
                 0xA0 => {
                     state.scopes.push(MatroskaScope {
@@ -571,9 +572,10 @@ impl RangeInspection {
                     });
                 }
                 0xA1 => {
+                    let block_cluster_time = *cluster_time;
                     self.request_matroska_block_prefix(
                         header,
-                        *cluster_time,
+                        block_cluster_time,
                         Some(scope_depth),
                     )?;
                 }
