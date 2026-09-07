@@ -4,7 +4,7 @@ type WasmExports = {
   memory: WebAssembly.Memory;
   allocate: (len: number) => number;
   deallocate: (ptr: number, len: number) => void;
-  parse_subtitle: (ptr: number, len: number) => bigint;
+  parse_subtitle_document: (ptr: number, len: number) => bigint;
 };
 
 export type VideoInspectionProgress = {
@@ -56,7 +56,7 @@ async function invokeSubtitle(bytes: Uint8Array): Promise<ParsedSubtitle> {
 
   try {
     new Uint8Array(wasm.memory.buffer, inputPtr, bytes.byteLength).set(bytes);
-    const packed = wasm.parse_subtitle(inputPtr, bytes.byteLength);
+    const packed = wasm.parse_subtitle_document(inputPtr, bytes.byteLength);
     const outputPtr = Number(packed & 0xffff_ffffn);
     const outputLen = Number(packed >> 32n);
     if (outputLen === 0) {
