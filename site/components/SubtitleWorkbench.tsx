@@ -44,6 +44,7 @@ function formatByteCount(bytes: number) {
 
 export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const inspectionAbortRef = useRef<AbortController>();
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -62,6 +63,10 @@ export function SubtitleWorkbench() {
       }
     };
   }, [videoUrl]);
+
+  useEffect(() => {
+    return () => inspectionAbortRef.current?.abort();
+  }, []);
 
   const durationMs = useMemo(
     () =>
@@ -95,6 +100,10 @@ export function SubtitleWorkbench() {
       return;
     }
 
+    inspectionAbortRef.current?.abort();
+    const controller = new AbortController();
+    inspectionAbortRef.current = controller;
+
     setBusy("Inspecting video container with Rust/WASM…");
     setError("");
     setWarnings([]);
@@ -106,9 +115,18 @@ export function SubtitleWorkbench() {
     setVideoUrl(URL.createObjectURL(file));
 
     try {
-      const result = await inspectVideo(file, ({ phase, transferred }) => {
-        setBusy(`${phase}… ${formatByteCount(transferred)} read locally`);
-      });
+      const result = await inspectVideo(
+        file,
+        ({ phase, transferred }) => {
+          if (inspectionAbortRef.current === controller) {
+            setBusy(`${phase}… ${formatByteCount(transferred)} read locally`);
+          }
+        },
+        controller.signal,
+      );
+      if (inspectionAbortRef.current !== controller) {
+        return;
+      }
       const embeddedTracks: Track[] = result.tracks.map((track) => ({
         ...track,
         enabled: true,
@@ -128,9 +146,17 @@ export function SubtitleWorkbench() {
         setSelectedTrackId(embeddedTracks[0].id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The video could not be inspected.");
+      if (cause instanceof DOMException && cause.name === "AbortError") {
+        return;
+      }
+      if (inspectionAbortRef.current === controller) {
+        setError(cause instanceof Error ? cause.message : "The video could not be inspected.");
+      }
     } finally {
-      setBusy("");
+      if (inspectionAbortRef.current === controller) {
+        inspectionAbortRef.current = undefined;
+        setBusy("");
+      }
     }
   }
 
