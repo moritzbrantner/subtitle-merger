@@ -76,10 +76,34 @@ async function invokeSubtitle(bytes: Uint8Array): Promise<ParsedSubtitle> {
 export async function inspectVideo(
   file: File,
   onProgress?: (progress: VideoInspectionProgress) => void,
+  signal?: AbortSignal,
 ): Promise<VideoInspection> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(`${basePath()}/video-inspection-worker.js`);
-    const finish = () => worker.terminate();
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      signal?.removeEventListener("abort", abort);
+      worker.terminate();
+    };
+    const abort = () => {
+      if (settled) {
+        return;
+      }
+      finish();
+      reject(new DOMException("Video inspection was cancelled.", "AbortError"));
+    };
+
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+
     worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
       const message = event.data;
       if (message.type === "result") {
