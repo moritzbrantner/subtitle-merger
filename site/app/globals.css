@@ -112,6 +112,7 @@ input:focus-visible,
 .import-panel,
 .preview-panel,
 .tracks-panel,
+.merge-panel,
 .detail-panel,
 .support-panel {
   border: 1px solid var(--border);
@@ -120,6 +121,7 @@ input:focus-visible,
 
 .import-panel,
 .tracks-panel,
+.merge-panel,
 .detail-panel,
 .support-panel {
   padding: 24px;
@@ -402,10 +404,7 @@ input:focus-visible,
   line-height: 1.55;
 }
 
-.detail-heading {
-  align-items: center;
-}
-
+.merge-actions,
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -413,6 +412,7 @@ input:focus-visible,
   gap: 8px;
 }
 
+.merge-actions button,
 .detail-actions button {
   border: 1px solid var(--border-strong);
   background: var(--text);
@@ -421,6 +421,7 @@ input:focus-visible,
   cursor: pointer;
 }
 
+.merge-actions button:hover,
 .detail-actions button:hover {
   background: var(--accent-strong);
 }
@@ -428,6 +429,50 @@ input:focus-visible,
 .detail-actions .secondary-button {
   background: transparent;
   color: var(--muted);
+}
+
+.detail-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.merge-note {
+  max-width: 920px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.detail-heading {
+  align-items: center;
+}
+
+.offset-control {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(130px, 180px) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.offset-control span {
+  font-weight: 650;
+}
+
+.offset-control input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--background);
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.offset-control small {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .cue-table-wrap {
@@ -508,7 +553,8 @@ input:focus-visible,
   }
 
   .input-grid,
-  .support-panel {
+  .support-panel,
+  .offset-control {
     grid-template-columns: 1fr;
   }
 
@@ -540,6 +586,7 @@ input:focus-visible,
     min-height: 280px;
   }
 
+  .merge-actions,
   .detail-actions {
     justify-content: flex-start;
   }
