@@ -1,0 +1,5 @@
+/node_modules
+/.next
+/out
+/public/subtitle_merger_web_wasm.wasm
+*.tsbuildinfo
