@@ -44,7 +44,7 @@ function formatByteCount(bytes: number) {
 
 export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const inspectionAbortRef = useRef<AbortController>();
+  const inspectionAbortRef = useRef<AbortController | null>(null);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -154,7 +154,7 @@ export function SubtitleWorkbench() {
       }
     } finally {
       if (inspectionAbortRef.current === controller) {
-        inspectionAbortRef.current = undefined;
+        inspectionAbortRef.current = null;
         setBusy("");
       }
     }
