@@ -1,0 +1,152 @@
+name: patch-streaming-borrow
+
+on:
+  push:
+    branches: [feat/streaming-video-inspection]
+    paths:
+      - ".github/workflows/patch-streaming-borrow.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: feat/streaming-video-inspection
+      - name: Isolate Matroska scope borrow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("web-wasm/src/range_inspection.rs")
+          text = path.read_text()
+          start = text.index("    fn consume_matroska_header")
+          end = text.index("    fn request_matroska_block_prefix", start)
+          replacement = r'''    fn consume_matroska_header(&mut self, offset: u64, bytes: &[u8]) -> Result<(), String> {
+              let (scope_depth, header, scope_kind, scope_time) = {
+                  let InspectionState::Matroska(state) = &mut self.state else {
+                      return Err("Matroska state was lost while scanning the file.".into());
+                  };
+                  let scope_depth = state
+                      .scopes
+                      .len()
+                      .checked_sub(1)
+                      .ok_or_else(|| "Matroska scope stack is empty.".to_string())?;
+                  let scope_end = state.scopes[scope_depth].end;
+                  let header = parse_ebml_header(bytes, offset, scope_end)?;
+                  state.scopes[scope_depth].offset = header.end;
+                  let (scope_kind, scope_time) = match &state.scopes[scope_depth].kind {
+                      MatroskaScopeKind::Top => (0_u8, 0_i64),
+                      MatroskaScopeKind::Segment => (1_u8, 0_i64),
+                      MatroskaScopeKind::Cluster { time } => (2_u8, *time),
+                      MatroskaScopeKind::BlockGroup { cluster_time, .. } => (3_u8, *cluster_time),
+                  };
+                  (scope_depth, header, scope_kind, scope_time)
+              };
+
+              match scope_kind {
+                  0 => {
+                      if header.id == 0x1853_8067 {
+                          let InspectionState::Matroska(state) = &mut self.state else {
+                              return Err("Matroska state was lost while entering Segment.".into());
+                          };
+                          state.segment_seen = true;
+                          state.scopes.push(MatroskaScope {
+                              offset: header.payload_offset,
+                              end: header.end,
+                              kind: MatroskaScopeKind::Segment,
+                          });
+                      }
+                  }
+                  1 => match header.id {
+                      0x1549_A966 => {
+                          ensure_metadata_size(header.payload_length, "Matroska Info")?;
+                          self.pending = Some(ReadRequest {
+                              offset: header.payload_offset,
+                              length: checked_read_length(header.payload_length)?,
+                              phase: "Reading Matroska metadata",
+                              purpose: ReadPurpose::MatroskaInfo { scope_depth },
+                          });
+                      }
+                      0x1654_AE6B => {
+                          ensure_metadata_size(header.payload_length, "Matroska Tracks")?;
+                          self.pending = Some(ReadRequest {
+                              offset: header.payload_offset,
+                              length: checked_read_length(header.payload_length)?,
+                              phase: "Reading Matroska track metadata",
+                              purpose: ReadPurpose::MatroskaTracks { scope_depth },
+                          });
+                      }
+                      0x1F43_B675 => {
+                          let InspectionState::Matroska(state) = &mut self.state else {
+                              return Err("Matroska state was lost while entering Cluster.".into());
+                          };
+                          state.scopes.push(MatroskaScope {
+                              offset: header.payload_offset,
+                              end: header.end,
+                              kind: MatroskaScopeKind::Cluster { time: 0 },
+                          });
+                      }
+                      _ => {}
+                  },
+                  2 => match header.id {
+                      0xE7 => {
+                          self.pending = Some(ReadRequest {
+                              offset: header.payload_offset,
+                              length: checked_read_length(header.payload_length)?,
+                              phase: "Reading Matroska cluster timing",
+                              purpose: ReadPurpose::MatroskaClusterTime { scope_depth },
+                          });
+                      }
+                      0xA3 => self.request_matroska_block_prefix(header, scope_time, None)?,
+                      0xA0 => {
+                          let InspectionState::Matroska(state) = &mut self.state else {
+                              return Err("Matroska state was lost while entering BlockGroup.".into());
+                          };
+                          state.scopes.push(MatroskaScope {
+                              offset: header.payload_offset,
+                              end: header.end,
+                              kind: MatroskaScopeKind::BlockGroup {
+                                  cluster_time: scope_time,
+                                  duration_ticks: None,
+                                  pending: Vec::new(),
+                              },
+                          });
+                      }
+                      _ => {}
+                  },
+                  3 => match header.id {
+                      0x9B => {
+                          self.pending = Some(ReadRequest {
+                              offset: header.payload_offset,
+                              length: checked_read_length(header.payload_length)?,
+                              phase: "Reading subtitle duration",
+                              purpose: ReadPurpose::MatroskaBlockDuration { scope_depth },
+                          });
+                      }
+                      0xA1 => self.request_matroska_block_prefix(
+                          header,
+                          scope_time,
+                          Some(scope_depth),
+                      )?,
+                      _ => {}
+                  },
+                  _ => return Err("Unknown Matroska scope kind.".into()),
+              }
+              Ok(())
+          }
+
+'''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+      - name: Remove one-shot workflow and push fix
+        run: |
+          rm .github/workflows/patch-streaming-borrow.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web-wasm/src/range_inspection.rs .github/workflows/patch-streaming-borrow.yml
+          git commit -m "Fix Matroska range inspection borrowing"
+          git push origin HEAD:feat/streaming-video-inspection
