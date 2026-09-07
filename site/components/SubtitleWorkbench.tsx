@@ -9,8 +9,13 @@ import {
   toSrt,
   toWebVtt,
 } from "../lib/subtitles";
-import type { Track, VideoInspection } from "../lib/types";
-import { inspectVideo, parseSubtitle } from "../lib/wasm";
+import type { Cue, Track, VideoInspection } from "../lib/types";
+import {
+  inspectVideo,
+  mergeTracks,
+  parseSubtitle,
+  type MergeFormat,
+} from "../lib/wasm";
 
 const videoAccept = ".mp4,.m4v,.mov,.mkv,.webm,video/*";
 const subtitleAccept = ".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip,text/plain";
@@ -19,8 +24,24 @@ function fileTrackId(file: File) {
   return `file-${file.name}-${file.size}-${file.lastModified}`;
 }
 
+function shiftedTime(milliseconds: number, offsetMs: number) {
+  return Math.max(0, milliseconds + offsetMs);
+}
+
+function shiftedCue(cue: Cue, offsetMs: number): Cue {
+  const startMs = shiftedTime(cue.startMs, offsetMs);
+  return {
+    ...cue,
+    startMs,
+    endMs: Math.max(startMs, shiftedTime(cue.endMs, offsetMs)),
+  };
+}
+
 function trackEnd(track: Track) {
-  return track.cues.reduce((end, cue) => Math.max(end, cue.endMs), 0);
+  return track.cues.reduce(
+    (end, cue) => Math.max(end, shiftedTime(cue.endMs, track.offsetMs)),
+    0,
+  );
 }
 
 function downloadName(track: Track, extension: string) {
@@ -40,6 +61,16 @@ function formatByteCount(bytes: number) {
     return `${(bytes / 1024).toFixed(1)} KiB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function triggerDownload(content: string, mimeType: string, filename: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export function SubtitleWorkbench() {
@@ -84,11 +115,21 @@ export function SubtitleWorkbench() {
     [selectedTrackId, tracks],
   );
 
+  const selectedTrackIndex = selectedTrack
+    ? tracks.findIndex((track) => track.id === selectedTrack.id)
+    : -1;
+
   const visibleCues = useMemo(
     () =>
       tracks
         .filter((track) => track.enabled)
-        .map((track) => ({ track, cue: currentCue(track.cues, positionMs) }))
+        .map((track) => {
+          const sourcePosition = positionMs - track.offsetMs;
+          return {
+            track,
+            cue: sourcePosition >= 0 ? currentCue(track.cues, sourcePosition) : undefined,
+          };
+        })
         .filter((entry) => entry.cue),
     [positionMs, tracks],
   );
@@ -130,6 +171,7 @@ export function SubtitleWorkbench() {
       const embeddedTracks: Track[] = result.tracks.map((track) => ({
         ...track,
         enabled: true,
+        offsetMs: 0,
       }));
       setInspection(result);
       setTracks((current) => {
@@ -185,6 +227,7 @@ export function SubtitleWorkbench() {
           forced: false,
           filename: file.name,
           enabled: true,
+          offsetMs: 0,
           cues: parsed.cues,
         };
         imported.push(track);
@@ -215,6 +258,30 @@ export function SubtitleWorkbench() {
     );
   }
 
+  function setTrackOffset(id: string, offsetMs: number) {
+    if (!Number.isFinite(offsetMs)) {
+      return;
+    }
+    setTracks((current) =>
+      current.map((track) =>
+        track.id === id ? { ...track, offsetMs: Math.trunc(offsetMs) } : track,
+      ),
+    );
+  }
+
+  function moveTrack(id: string, direction: -1 | 1) {
+    setTracks((current) => {
+      const index = current.findIndex((track) => track.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   function removeTrack(id: string) {
     setTracks((current) => current.filter((track) => track.id !== id));
     if (selectedTrackId === id) {
@@ -232,16 +299,33 @@ export function SubtitleWorkbench() {
   }
 
   function downloadTrack(track: Track, format: "srt" | "vtt") {
-    const content = format === "srt" ? toSrt(track) : toWebVtt(track);
-    const blob = new Blob([content], {
-      type: format === "srt" ? "application/x-subrip;charset=utf-8" : "text/vtt;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = downloadName(track, format);
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const adjustedTrack = {
+      ...track,
+      cues: track.cues.map((cue) => shiftedCue(cue, track.offsetMs)),
+    };
+    const content = format === "srt" ? toSrt(adjustedTrack) : toWebVtt(adjustedTrack);
+    triggerDownload(
+      content,
+      format === "srt" ? "application/x-subrip;charset=utf-8" : "text/vtt;charset=utf-8",
+      downloadName(track, format),
+    );
+  }
+
+  async function downloadMerged(format: MergeFormat) {
+    setBusy(`Merging enabled tracks as ${format.toUpperCase()} with Rust/WASM…`);
+    setError("");
+    try {
+      const result = await mergeTracks(tracks, format);
+      triggerDownload(
+        result.content,
+        result.mimeType,
+        `merged-subtitles.${result.extension}`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The subtitle tracks could not be merged.");
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -366,6 +450,7 @@ export function SubtitleWorkbench() {
                       <strong>{track.title}</strong>
                       <small>
                         {track.origin === "embedded" ? "embedded" : track.filename} · {track.codec} · {track.cues.length} cues
+                        {track.offsetMs !== 0 ? ` · offset ${track.offsetMs > 0 ? "+" : ""}${track.offsetMs} ms` : ""}
                       </small>
                     </span>
                   </label>
@@ -375,17 +460,21 @@ export function SubtitleWorkbench() {
                 </div>
                 <div className="cue-lane">
                   {track.cues.map((cue, index) => {
-                    const left = Math.min(100, (cue.startMs / durationMs) * 100);
-                    const width = Math.max(0.16, Math.min(100 - left, ((cue.endMs - cue.startMs) / durationMs) * 100));
+                    const adjusted = shiftedCue(cue, track.offsetMs);
+                    const left = Math.min(100, (adjusted.startMs / durationMs) * 100);
+                    const width = Math.max(
+                      0.16,
+                      Math.min(100 - left, ((adjusted.endMs - adjusted.startMs) / durationMs) * 100),
+                    );
                     return (
                       <button
                         className="cue-block"
                         type="button"
                         key={`${cue.startMs}-${cue.endMs}-${index}`}
                         style={{ left: `${left}%`, width: `${width}%` }}
-                        title={`${formatClock(cue.startMs)} — ${cue.text}`}
-                        aria-label={`Seek to ${formatClock(cue.startMs)}: ${cue.text}`}
-                        onClick={() => seek(cue.startMs)}
+                        title={`${formatClock(adjusted.startMs)} — ${cue.text}`}
+                        aria-label={`Seek to ${formatClock(adjusted.startMs)}: ${cue.text}`}
+                        onClick={() => seek(adjusted.startMs)}
                       />
                     );
                   })}
@@ -395,6 +484,25 @@ export function SubtitleWorkbench() {
           </div>
         )}
       </section>
+
+      {tracks.length > 0 ? (
+        <section className="merge-panel" aria-labelledby="merge-heading">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Merge</p>
+              <h2 id="merge-heading">Export enabled tracks in timeline order</h2>
+            </div>
+            <div className="merge-actions">
+              <button type="button" onClick={() => downloadMerged("ass")}>Merged ASS</button>
+              <button type="button" onClick={() => downloadMerged("srt")}>Merged SRT</button>
+              <button type="button" onClick={() => downloadMerged("vtt")}>Merged WebVTT</button>
+            </div>
+          </div>
+          <p className="merge-note">
+            ASS keeps tracks simultaneous with one deterministic style/vertical position per track. SRT and WebVTT split the timeline at cue boundaries and join overlapping active track text in the order shown above.
+          </p>
+        </section>
+      ) : null}
 
       {selectedTrack ? (
         <section className="detail-panel" aria-labelledby="detail-heading">
@@ -409,11 +517,38 @@ export function SubtitleWorkbench() {
               </p>
             </div>
             <div className="detail-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={selectedTrackIndex <= 0}
+                onClick={() => moveTrack(selectedTrack.id, -1)}
+              >
+                Move up
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={selectedTrackIndex < 0 || selectedTrackIndex >= tracks.length - 1}
+                onClick={() => moveTrack(selectedTrack.id, 1)}
+              >
+                Move down
+              </button>
               <button type="button" onClick={() => downloadTrack(selectedTrack, "srt")}>Download SRT</button>
               <button type="button" onClick={() => downloadTrack(selectedTrack, "vtt")}>Download VTT</button>
               <button type="button" className="secondary-button" onClick={() => removeTrack(selectedTrack.id)}>Remove</button>
             </div>
           </div>
+
+          <label className="offset-control">
+            <span>Track offset (milliseconds)</span>
+            <input
+              type="number"
+              step="100"
+              value={selectedTrack.offsetMs}
+              onChange={(event) => setTrackOffset(selectedTrack.id, Number(event.currentTarget.value))}
+            />
+            <small>Positive values delay this track; negative values move it earlier. Exported and preview timing both use this offset.</small>
+          </label>
 
           <div className="cue-table-wrap">
             <table className="cue-table">
@@ -425,13 +560,16 @@ export function SubtitleWorkbench() {
                 </tr>
               </thead>
               <tbody>
-                {selectedTrack.cues.map((cue, index) => (
-                  <tr key={`${cue.startMs}-${cue.endMs}-${index}`} onClick={() => seek(cue.startMs)}>
-                    <td>{formatClock(cue.startMs)}</td>
-                    <td>{formatClock(cue.endMs)}</td>
-                    <td>{cue.text}</td>
-                  </tr>
-                ))}
+                {selectedTrack.cues.map((cue, index) => {
+                  const adjusted = shiftedCue(cue, selectedTrack.offsetMs);
+                  return (
+                    <tr key={`${cue.startMs}-${cue.endMs}-${index}`} onClick={() => seek(adjusted.startMs)}>
+                      <td>{formatClock(adjusted.startMs)}</td>
+                      <td>{formatClock(adjusted.endMs)}</td>
+                      <td>{cue.text}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

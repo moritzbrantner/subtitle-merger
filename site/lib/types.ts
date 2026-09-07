@@ -2,6 +2,9 @@ export type Cue = {
   startMs: number;
   endMs: number;
   text: string;
+  rawText?: string;
+  identifier?: string | null;
+  settings?: string;
 };
 
 export type EmbeddedTrack = {
@@ -46,5 +49,6 @@ export type Track = {
   forced: boolean;
   filename?: string;
   enabled: boolean;
+  offsetMs: number;
   cues: Cue[];
 };
