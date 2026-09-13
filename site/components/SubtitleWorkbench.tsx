@@ -125,6 +125,7 @@ function triggerByteDownload(content: Uint8Array, mimeType: string, filename: st
 export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const inspectionAbortRef = useRef<AbortController | null>(null);
+  const cueEditInFlightRef = useRef(false);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -339,15 +340,23 @@ export function SubtitleWorkbench() {
   }
 
   async function saveCueEdit(track: Track, cueIndex: number, cue: Cue) {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
     if (!track.sourceBytes) {
       setError("This embedded track does not yet retain a source document for lossless editing.");
       return;
     }
     const key = cueDraftKey(track.id, cueIndex);
     const draft = cueDrafts[key] ?? draftFromCue(cue);
+    if (draft.startMs.trim() === "" || draft.endMs.trim() === "") {
+      setError("Cue start and end times are required.");
+      return;
+    }
     const startMs = Number(draft.startMs);
     const endMs = Number(draft.endMs);
 
+    cueEditInFlightRef.current = true;
     setBusy(`Saving cue ${cueIndex + 1} through Rust/WASM…`);
     setError("");
     try {
@@ -379,6 +388,7 @@ export function SubtitleWorkbench() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
     } finally {
+      cueEditInFlightRef.current = false;
       setBusy("");
     }
   }
@@ -404,12 +414,12 @@ export function SubtitleWorkbench() {
   }
 
   function seek(milliseconds: number) {
+    setPositionMs(milliseconds);
     const video = videoRef.current;
     if (!video) {
       return;
     }
     video.currentTime = milliseconds / 1000;
-    setPositionMs(milliseconds);
   }
 
   function downloadSourceTrack(track: Track) {
@@ -676,7 +686,7 @@ export function SubtitleWorkbench() {
               value={selectedTrack.offsetMs}
               onChange={(event) => setTrackOffset(selectedTrack.id, Number(event.currentTarget.value))}
             />
-            <small>Positive values delay this track; negative values move it earlier. Exported and preview timing both use this offset.</small>
+            <small>Positive values delay this track; negative values move it earlier. Preview plus converted and merged exports use this offset; Download source preserves source-document timing.</small>
           </label>
 
           {selectedTrack.sourceBytes ? (
@@ -752,7 +762,7 @@ export function SubtitleWorkbench() {
                         <div className="cue-actions">
                           <button type="button" className="secondary-button" onClick={() => seek(adjusted.startMs)}>Seek</button>
                           {selectedTrack.sourceBytes ? (
-                            <button type="button" onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
+                            <button type="button" disabled={Boolean(busy)} onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
                           ) : null}
                         </div>
                       </td>
