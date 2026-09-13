@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
+import { CueTimelineBlock } from "./CueTimelineBlock";
 import {
   recordAcceptedDocument,
   redoAcceptedDocument,
@@ -269,10 +270,11 @@ export function SubtitleWorkbench() {
   }
 
   function clearTrackBrowserState(trackIds: Set<string>) {
+    const ids = [...trackIds];
     setCueDrafts((current) => {
       const next: Record<string, CueDraft> = {};
       for (const [key, draft] of Object.entries(current)) {
-        if (![...trackIds].some((trackId) => key.startsWith(`${trackId}:`))) {
+        if (!ids.some((trackId) => key.startsWith(`${trackId}:`))) {
           next[key] = draft;
         }
       }
@@ -286,7 +288,7 @@ export function SubtitleWorkbench() {
       return next;
     });
     for (const key of Object.keys(cueTextRefs.current)) {
-      if ([...trackIds].some((trackId) => key.startsWith(`${trackId}:`))) {
+      if (ids.some((trackId) => key.startsWith(`${trackId}:`))) {
         delete cueTextRefs.current[key];
       }
     }
@@ -501,6 +503,42 @@ export function SubtitleWorkbench() {
       clearCueDraft(track.id, cueIndex);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
+  async function commitTimelineCueTiming(
+    track: Track,
+    cueIndex: number,
+    cue: Cue,
+    startMs: number,
+    endMs: number,
+  ) {
+    if (cueEditInFlightRef.current || !track.sourceBytes) {
+      return false;
+    }
+    if (cueDrafts[cueDraftKey(track.id, cueIndex)]) {
+      setError("Save this cue's pending draft before changing its timing on the timeline.");
+      return false;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Updating cue ${cueIndex + 1} timing through Rust/WASM…`);
+    setError("");
+    try {
+      const edited = await editSubtitleCue(track.sourceBytes, {
+        cueIndex,
+        startMs,
+        endMs,
+        rawText: cue.rawText ?? cue.text,
+      });
+      acceptTrackDocument(track, edited);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cue timing could not be updated.");
+      return false;
     } finally {
       cueEditInFlightRef.current = false;
       setBusy("");
@@ -859,25 +897,22 @@ export function SubtitleWorkbench() {
                   </button>
                 </div>
                 <div className="cue-lane">
-                  {track.cues.map((cue, index) => {
-                    const adjusted = shiftedCue(cue, track.offsetMs);
-                    const left = Math.min(100, (adjusted.startMs / durationMs) * 100);
-                    const width = Math.max(
-                      0.16,
-                      Math.min(100 - left, ((adjusted.endMs - adjusted.startMs) / durationMs) * 100),
-                    );
-                    return (
-                      <button
-                        className="cue-block"
-                        type="button"
-                        key={`${cue.startMs}-${cue.endMs}-${index}`}
-                        style={{ left: `${left}%`, width: `${width}%` }}
-                        title={`${formatClock(adjusted.startMs)} — ${cue.text}`}
-                        aria-label={`Seek to ${formatClock(adjusted.startMs)}: ${cue.text}`}
-                        onClick={() => seek(adjusted.startMs)}
-                      />
-                    );
-                  })}
+                  {track.cues.map((cue, index) => (
+                    <CueTimelineBlock
+                      key={`${cue.startMs}-${cue.endMs}-${index}`}
+                      cue={cue}
+                      cueIndex={index}
+                      trackTitle={track.title}
+                      trackOffsetMs={track.offsetMs}
+                      timelineDurationMs={durationMs}
+                      editable={Boolean(track.sourceBytes) && !cueDrafts[cueDraftKey(track.id, index)]}
+                      busy={Boolean(busy)}
+                      onSeek={seek}
+                      onCommitTiming={(startMs, endMs) =>
+                        commitTimelineCueTiming(track, index, cue, startMs, endMs)
+                      }
+                    />
+                  ))}
                 </div>
               </div>
             ))}
@@ -975,7 +1010,7 @@ export function SubtitleWorkbench() {
 
           {selectedTrack.sourceBytes ? (
             <p className="merge-note">
-              Cue timing, text, split, and merge edits are applied atomically through Rust before replacing this track. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. Undo/redo keeps up to 20 accepted source-document states in browser memory and reparses a restored state through Rust; save pending drafts first. Track offset and track ordering are not part of this source-edit history. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
+              Cue timing, text, split, merge, and timeline timing edits are applied atomically through Rust before replacing this track. Drag a cue to move it; drag its edge handles to resize it. Keyboard focus on the cue or handles uses Left/Right for 100 ms and Shift+Left/Right for one second. Timeline editing is disabled for a cue while it has an unsaved draft. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. Undo/redo keeps accepted source-document states in bounded browser memory and reparses a restored state through Rust; save pending drafts first. Track offset and track ordering are not part of this source-edit history. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
             </p>
           ) : (
             <p className="merge-note">
@@ -1008,6 +1043,7 @@ export function SubtitleWorkbench() {
                               type="number"
                               min="0"
                               step="1"
+                              disabled={Boolean(busy)}
                               value={draft.startMs}
                               onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "startMs", event.currentTarget.value)}
                             />
@@ -1023,6 +1059,7 @@ export function SubtitleWorkbench() {
                               type="number"
                               min="0"
                               step="1"
+                              disabled={Boolean(busy)}
                               value={draft.endMs}
                               onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "endMs", event.currentTarget.value)}
                             />
@@ -1039,6 +1076,7 @@ export function SubtitleWorkbench() {
                                 cueTextRefs.current[key] = node;
                               }}
                               rows={2}
+                              disabled={Boolean(busy)}
                               value={draft.rawText}
                               onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "rawText", event.currentTarget.value)}
                             />
