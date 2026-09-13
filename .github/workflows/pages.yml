@@ -53,6 +53,9 @@ jobs:
       - name: Install Pages dependencies
         working-directory: site
         run: bun install --frozen-lockfile
+      - name: Test Pages state helpers
+        working-directory: site
+        run: bun run test
       - name: Typecheck Pages site
         working-directory: site
         run: bun run typecheck
