@@ -51,4 +51,5 @@ export type Track = {
   enabled: boolean;
   offsetMs: number;
   cues: Cue[];
+  sourceBytes?: Uint8Array;
 };

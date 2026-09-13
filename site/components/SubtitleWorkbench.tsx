@@ -6,11 +6,10 @@ import {
   currentCue,
   formatClock,
   inferTrackTitle,
-  toSrt,
-  toWebVtt,
 } from "../lib/subtitles";
 import type { Cue, Track, VideoInspection } from "../lib/types";
 import {
+  editSubtitleCue,
   inspectVideo,
   mergeTracks,
   parseSubtitle,
@@ -20,8 +19,26 @@ import {
 const videoAccept = ".mp4,.m4v,.mov,.mkv,.webm,video/*";
 const subtitleAccept = ".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip,text/plain";
 
+type CueDraft = {
+  startMs: string;
+  endMs: string;
+  rawText: string;
+};
+
 function fileTrackId(file: File) {
   return `file-${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function cueDraftKey(trackId: string, cueIndex: number) {
+  return `${trackId}:${cueIndex}`;
+}
+
+function draftFromCue(cue: Cue): CueDraft {
+  return {
+    startMs: String(cue.startMs),
+    endMs: String(cue.endMs),
+    rawText: cue.rawText ?? cue.text,
+  };
 }
 
 function shiftedTime(milliseconds: number, offsetMs: number) {
@@ -53,6 +70,26 @@ function downloadName(track: Track, extension: string) {
   return `${slug || "subtitles"}.${extension}`;
 }
 
+function sourceExtension(format: string) {
+  switch (format.toLowerCase()) {
+    case "webvtt":
+    case "vtt":
+      return "vtt";
+    case "ass":
+      return "ass";
+    case "ssa":
+      return "ssa";
+    default:
+      return "srt";
+  }
+}
+
+function sourceMimeType(format: string) {
+  return format.toLowerCase() === "webvtt" || format.toLowerCase() === "vtt"
+    ? "text/vtt;charset=utf-8"
+    : "text/plain;charset=utf-8";
+}
+
 function formatByteCount(bytes: number) {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -73,14 +110,28 @@ function triggerDownload(content: string, mimeType: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function triggerByteDownload(content: Uint8Array, mimeType: string, filename: string) {
+  const copy = new Uint8Array(content.byteLength);
+  copy.set(content);
+  const blob = new Blob([copy.buffer], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const inspectionAbortRef = useRef<AbortController | null>(null);
+  const cueEditInFlightRef = useRef(false);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState("");
+  const [cueDrafts, setCueDrafts] = useState<Record<string, CueDraft>>({});
   const [positionMs, setPositionMs] = useState(0);
   const [videoDurationMs, setVideoDurationMs] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -216,6 +267,7 @@ export function SubtitleWorkbench() {
     const importedWarnings: string[] = [];
     for (const file of files) {
       try {
+        const sourceBytes = new Uint8Array(await file.arrayBuffer());
         const parsed = await parseSubtitle(file);
         const track: Track = {
           id: fileTrackId(file),
@@ -229,6 +281,7 @@ export function SubtitleWorkbench() {
           enabled: true,
           offsetMs: 0,
           cues: parsed.cues,
+          sourceBytes,
         };
         imported.push(track);
         importedWarnings.push(...parsed.warnings.map((warning) => `${file.name}: ${warning}`));
@@ -269,6 +322,77 @@ export function SubtitleWorkbench() {
     );
   }
 
+  function setCueDraftValue(
+    track: Track,
+    cueIndex: number,
+    cue: Cue,
+    field: keyof CueDraft,
+    value: string,
+  ) {
+    const key = cueDraftKey(track.id, cueIndex);
+    setCueDrafts((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? draftFromCue(cue)),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function saveCueEdit(track: Track, cueIndex: number, cue: Cue) {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
+    if (!track.sourceBytes) {
+      setError("This embedded track does not yet retain a source document for lossless editing.");
+      return;
+    }
+    const key = cueDraftKey(track.id, cueIndex);
+    const draft = cueDrafts[key] ?? draftFromCue(cue);
+    if (draft.startMs.trim() === "" || draft.endMs.trim() === "") {
+      setError("Cue start and end times are required.");
+      return;
+    }
+    const startMs = Number(draft.startMs);
+    const endMs = Number(draft.endMs);
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Saving cue ${cueIndex + 1} through Rust/WASM…`);
+    setError("");
+    try {
+      const edited = await editSubtitleCue(track.sourceBytes, {
+        cueIndex,
+        startMs,
+        endMs,
+        rawText: draft.rawText,
+      });
+      const sourceBytes = new TextEncoder().encode(edited.content);
+      setTracks((current) =>
+        current.map((candidate) =>
+          candidate.id === track.id
+            ? {
+                ...candidate,
+                format: edited.format,
+                codec: edited.format,
+                cues: edited.cues,
+                sourceBytes,
+              }
+            : candidate,
+        ),
+      );
+      setCueDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
   function moveTrack(id: string, direction: -1 | 1) {
     setTracks((current) => {
       const index = current.findIndex((track) => track.id === id);
@@ -290,25 +414,37 @@ export function SubtitleWorkbench() {
   }
 
   function seek(milliseconds: number) {
+    setPositionMs(milliseconds);
     const video = videoRef.current;
     if (!video) {
       return;
     }
     video.currentTime = milliseconds / 1000;
-    setPositionMs(milliseconds);
   }
 
-  function downloadTrack(track: Track, format: "srt" | "vtt") {
-    const adjustedTrack = {
-      ...track,
-      cues: track.cues.map((cue) => shiftedCue(cue, track.offsetMs)),
-    };
-    const content = format === "srt" ? toSrt(adjustedTrack) : toWebVtt(adjustedTrack);
-    triggerDownload(
-      content,
-      format === "srt" ? "application/x-subrip;charset=utf-8" : "text/vtt;charset=utf-8",
-      downloadName(track, format),
+  function downloadSourceTrack(track: Track) {
+    if (!track.sourceBytes) {
+      return;
+    }
+    const extension = sourceExtension(track.format);
+    triggerByteDownload(
+      track.sourceBytes,
+      sourceMimeType(track.format),
+      downloadName(track, extension),
     );
+  }
+
+  async function downloadTrack(track: Track, format: "srt" | "vtt") {
+    setBusy(`Converting ${track.title} to ${format.toUpperCase()} with Rust/WASM…`);
+    setError("");
+    try {
+      const result = await mergeTracks([{ ...track, enabled: true }], format);
+      triggerDownload(result.content, result.mimeType, downloadName(track, result.extension));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The subtitle track could not be converted.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function downloadMerged(format: MergeFormat) {
@@ -533,8 +669,11 @@ export function SubtitleWorkbench() {
               >
                 Move down
               </button>
-              <button type="button" onClick={() => downloadTrack(selectedTrack, "srt")}>Download SRT</button>
-              <button type="button" onClick={() => downloadTrack(selectedTrack, "vtt")}>Download VTT</button>
+              {selectedTrack.sourceBytes ? (
+                <button type="button" onClick={() => downloadSourceTrack(selectedTrack)}>Download source</button>
+              ) : null}
+              <button type="button" onClick={() => downloadTrack(selectedTrack, "srt")}>Convert to SRT</button>
+              <button type="button" onClick={() => downloadTrack(selectedTrack, "vtt")}>Convert to VTT</button>
               <button type="button" className="secondary-button" onClick={() => removeTrack(selectedTrack.id)}>Remove</button>
             </div>
           </div>
@@ -547,8 +686,18 @@ export function SubtitleWorkbench() {
               value={selectedTrack.offsetMs}
               onChange={(event) => setTrackOffset(selectedTrack.id, Number(event.currentTarget.value))}
             />
-            <small>Positive values delay this track; negative values move it earlier. Exported and preview timing both use this offset.</small>
+            <small>Positive values delay this track; negative values move it earlier. Preview plus converted and merged exports use this offset; Download source preserves source-document timing.</small>
           </label>
+
+          {selectedTrack.sourceBytes ? (
+            <p className="merge-note">
+              Cue timing and source text edits are applied atomically by Rust and then reparsed before replacing this track. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
+            </p>
+          ) : (
+            <p className="merge-note">
+              Embedded tracks are read-only in this slice because their extracted source document is not retained yet. They can still be offset, reordered, converted, and merged.
+            </p>
+          )}
 
           <div className="cue-table-wrap">
             <table className="cue-table">
@@ -557,16 +706,66 @@ export function SubtitleWorkbench() {
                   <th>Start</th>
                   <th>End</th>
                   <th>Text</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedTrack.cues.map((cue, index) => {
                   const adjusted = shiftedCue(cue, selectedTrack.offsetMs);
+                  const key = cueDraftKey(selectedTrack.id, index);
+                  const draft = cueDrafts[key] ?? draftFromCue(cue);
                   return (
-                    <tr key={`${cue.startMs}-${cue.endMs}-${index}`} onClick={() => seek(adjusted.startMs)}>
-                      <td>{formatClock(adjusted.startMs)}</td>
-                      <td>{formatClock(adjusted.endMs)}</td>
-                      <td>{cue.text}</td>
+                    <tr key={`${cue.startMs}-${cue.endMs}-${index}`}>
+                      <td>
+                        {selectedTrack.sourceBytes ? (
+                          <label className="cue-field">
+                            <span className="sr-only">Cue {index + 1} start milliseconds</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={draft.startMs}
+                              onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "startMs", event.currentTarget.value)}
+                            />
+                            <small>{formatClock(adjusted.startMs)}</small>
+                          </label>
+                        ) : formatClock(adjusted.startMs)}
+                      </td>
+                      <td>
+                        {selectedTrack.sourceBytes ? (
+                          <label className="cue-field">
+                            <span className="sr-only">Cue {index + 1} end milliseconds</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={draft.endMs}
+                              onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "endMs", event.currentTarget.value)}
+                            />
+                            <small>{formatClock(adjusted.endMs)}</small>
+                          </label>
+                        ) : formatClock(adjusted.endMs)}
+                      </td>
+                      <td>
+                        {selectedTrack.sourceBytes ? (
+                          <label className="cue-field cue-text-field">
+                            <span className="sr-only">Cue {index + 1} source text</span>
+                            <textarea
+                              rows={2}
+                              value={draft.rawText}
+                              onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "rawText", event.currentTarget.value)}
+                            />
+                          </label>
+                        ) : cue.text}
+                      </td>
+                      <td>
+                        <div className="cue-actions">
+                          <button type="button" className="secondary-button" onClick={() => seek(adjusted.startMs)}>Seek</button>
+                          {selectedTrack.sourceBytes ? (
+                            <button type="button" disabled={Boolean(busy)} onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
