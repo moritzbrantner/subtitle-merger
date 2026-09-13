@@ -7,6 +7,8 @@ mod edit;
 mod source_rewrite;
 // Structural split/merge operations remain Rust-owned and fail closed on metadata loss.
 mod structure;
+// Two-anchor drift correction owns deterministic subtitle timing transforms in Rust.
+mod drift;
 // Deterministic track ordering, timing transforms, overlap handling, and merged serialization are Rust-owned.
 mod merge;
 mod range_inspection;
