@@ -6,6 +6,8 @@ type WasmExports = {
   deallocate: (ptr: number, len: number) => void;
   parse_subtitle_document: (ptr: number, len: number) => bigint;
   edit_subtitle_document: (ptr: number, len: number) => bigint;
+  split_subtitle_cue: (ptr: number, len: number) => bigint;
+  merge_subtitle_cues: (ptr: number, len: number) => bigint;
   merge_tracks: (ptr: number, len: number, format: number) => bigint;
 };
 
@@ -28,6 +30,12 @@ export type CueEdit = {
   startMs: number;
   endMs: number;
   rawText: string;
+};
+
+export type CueSplit = {
+  cueIndex: number;
+  splitMs: number;
+  textOffsetUtf16: number;
 };
 
 export type CueEditResult = ParsedSubtitle & {
@@ -103,13 +111,21 @@ async function invokeSubtitle(bytes: Uint8Array): Promise<ParsedSubtitle> {
   }
 }
 
-function encodeCueEdit(source: Uint8Array, edit: CueEdit): Uint8Array {
-  if (source.byteLength > 0xffff_ffff) {
-    throw new Error("This subtitle document is too large for the current edit interface.");
-  }
-  if (!Number.isSafeInteger(edit.cueIndex) || edit.cueIndex < 0 || edit.cueIndex > 0xffff_ffff) {
+function validateCueIndex(cueIndex: number) {
+  if (!Number.isSafeInteger(cueIndex) || cueIndex < 0 || cueIndex > 0xffff_ffff) {
     throw new Error("Cue index must be a non-negative 32-bit integer.");
   }
+}
+
+function validateSource(source: Uint8Array, label: string) {
+  if (source.byteLength > 0xffff_ffff) {
+    throw new Error(`This subtitle document is too large for the current ${label} interface.`);
+  }
+}
+
+function encodeCueEdit(source: Uint8Array, edit: CueEdit): Uint8Array {
+  validateSource(source, "edit");
+  validateCueIndex(edit.cueIndex);
   if (!Number.isSafeInteger(edit.startMs) || edit.startMs < 0) {
     throw new Error("Cue start time must be a non-negative integer number of milliseconds.");
   }
@@ -151,28 +167,28 @@ function encodeCueEdit(source: Uint8Array, edit: CueEdit): Uint8Array {
   return bytes;
 }
 
-export async function editSubtitleCue(
-  source: Uint8Array,
-  edit: CueEdit,
+async function invokeCueDocumentTransform(
+  bytes: Uint8Array,
+  invoke: (wasm: WasmExports, ptr: number, len: number) => bigint,
+  allocationLabel: string,
 ): Promise<CueEditResult> {
-  const bytes = encodeCueEdit(source, edit);
   const wasm = await loadWasm();
   const inputPtr = wasm.allocate(bytes.byteLength);
   if (bytes.byteLength > 0 && inputPtr === 0) {
-    throw new Error("WebAssembly could not allocate memory for the cue edit request.");
+    throw new Error(`WebAssembly could not allocate memory for the ${allocationLabel} request.`);
   }
 
   try {
     new Uint8Array(wasm.memory.buffer, inputPtr, bytes.byteLength).set(bytes);
     const payload = decodePackedJson<CueEditPayload>(
       wasm,
-      wasm.edit_subtitle_document(inputPtr, bytes.byteLength),
+      invoke(wasm, inputPtr, bytes.byteLength),
     );
     if (payload.error) {
       throw new Error(payload.error);
     }
     if (payload.content === undefined) {
-      throw new Error("Rust returned an incomplete cue edit result.");
+      throw new Error(`Rust returned an incomplete ${allocationLabel} result.`);
     }
     const content = payload.content;
     const parsed = await invokeSubtitle(new TextEncoder().encode(content));
@@ -180,6 +196,90 @@ export async function editSubtitleCue(
   } finally {
     wasm.deallocate(inputPtr, bytes.byteLength);
   }
+}
+
+export async function editSubtitleCue(
+  source: Uint8Array,
+  edit: CueEdit,
+): Promise<CueEditResult> {
+  const bytes = encodeCueEdit(source, edit);
+  return invokeCueDocumentTransform(
+    bytes,
+    (wasm, ptr, len) => wasm.edit_subtitle_document(ptr, len),
+    "cue edit",
+  );
+}
+
+function encodeCueSplit(source: Uint8Array, split: CueSplit): Uint8Array {
+  validateSource(source, "split");
+  validateCueIndex(split.cueIndex);
+  if (!Number.isSafeInteger(split.splitMs) || split.splitMs < 0) {
+    throw new Error("Cue split time must be a non-negative integer number of milliseconds.");
+  }
+  if (
+    !Number.isSafeInteger(split.textOffsetUtf16)
+    || split.textOffsetUtf16 < 0
+    || split.textOffsetUtf16 > 0xffff_ffff
+  ) {
+    throw new Error("Cue split text offset must be a non-negative 32-bit UTF-16 offset.");
+  }
+
+  const length = 4 + source.byteLength + 4 + 8 + 4;
+  if (length > 0xffff_ffff) {
+    throw new Error("This cue split is too large for the current WebAssembly memory interface.");
+  }
+  const bytes = new Uint8Array(length);
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  view.setUint32(offset, source.byteLength, true);
+  offset += 4;
+  bytes.set(source, offset);
+  offset += source.byteLength;
+  view.setUint32(offset, split.cueIndex, true);
+  offset += 4;
+  view.setBigUint64(offset, BigInt(split.splitMs), true);
+  offset += 8;
+  view.setUint32(offset, split.textOffsetUtf16, true);
+  return bytes;
+}
+
+export async function splitSubtitleCue(
+  source: Uint8Array,
+  split: CueSplit,
+): Promise<CueEditResult> {
+  const bytes = encodeCueSplit(source, split);
+  return invokeCueDocumentTransform(
+    bytes,
+    (wasm, ptr, len) => wasm.split_subtitle_cue(ptr, len),
+    "cue split",
+  );
+}
+
+function encodeCueMerge(source: Uint8Array, cueIndex: number): Uint8Array {
+  validateSource(source, "merge");
+  validateCueIndex(cueIndex);
+  const length = 4 + source.byteLength + 4;
+  if (length > 0xffff_ffff) {
+    throw new Error("This cue merge is too large for the current WebAssembly memory interface.");
+  }
+  const bytes = new Uint8Array(length);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, source.byteLength, true);
+  bytes.set(source, 4);
+  view.setUint32(4 + source.byteLength, cueIndex, true);
+  return bytes;
+}
+
+export async function mergeSubtitleCues(
+  source: Uint8Array,
+  cueIndex: number,
+): Promise<CueEditResult> {
+  const bytes = encodeCueMerge(source, cueIndex);
+  return invokeCueDocumentTransform(
+    bytes,
+    (wasm, ptr, len) => wasm.merge_subtitle_cues(ptr, len),
+    "cue merge",
+  );
 }
 
 function encodeMergeTracks(tracks: Track[]): Uint8Array {
