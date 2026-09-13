@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import {
+  recordAcceptedDocument,
+  redoAcceptedDocument,
+  undoAcceptedDocument,
+  type DocumentHistory,
+} from "../lib/document-history";
+import {
   currentCue,
   formatClock,
   inferTrackTitle,
@@ -136,6 +142,7 @@ export function SubtitleWorkbench() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState("");
   const [cueDrafts, setCueDrafts] = useState<Record<string, CueDraft>>({});
+  const [documentHistory, setDocumentHistory] = useState<Record<string, DocumentHistory>>({});
   const [positionMs, setPositionMs] = useState(0);
   const [videoDurationMs, setVideoDurationMs] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -173,6 +180,10 @@ export function SubtitleWorkbench() {
   const selectedTrackIndex = selectedTrack
     ? tracks.findIndex((track) => track.id === selectedTrack.id)
     : -1;
+  const selectedHistory = selectedTrack ? documentHistory[selectedTrack.id] : undefined;
+  const selectedTrackHasDrafts = selectedTrack
+    ? Object.keys(cueDrafts).some((key) => key.startsWith(`${selectedTrack.id}:`))
+    : false;
 
   const visibleCues = useMemo(
     () =>
@@ -257,6 +268,30 @@ export function SubtitleWorkbench() {
     }
   }
 
+  function clearTrackBrowserState(trackIds: Set<string>) {
+    setCueDrafts((current) => {
+      const next: Record<string, CueDraft> = {};
+      for (const [key, draft] of Object.entries(current)) {
+        if (![...trackIds].some((trackId) => key.startsWith(`${trackId}:`))) {
+          next[key] = draft;
+        }
+      }
+      return next;
+    });
+    setDocumentHistory((current) => {
+      const next = { ...current };
+      for (const trackId of trackIds) {
+        delete next[trackId];
+      }
+      return next;
+    });
+    for (const key of Object.keys(cueTextRefs.current)) {
+      if ([...trackIds].some((trackId) => key.startsWith(`${trackId}:`))) {
+        delete cueTextRefs.current[key];
+      }
+    }
+  }
+
   async function handleSubtitleChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
@@ -296,10 +331,12 @@ export function SubtitleWorkbench() {
       }
     }
 
-    setTracks((current) => {
-      const importedIds = new Set(imported.map((track) => track.id));
-      return [...current.filter((track) => !importedIds.has(track.id)), ...imported];
-    });
+    const importedIds = new Set(imported.map((track) => track.id));
+    setTracks((current) => [
+      ...current.filter((track) => !importedIds.has(track.id)),
+      ...imported,
+    ]);
+    clearTrackBrowserState(importedIds);
     setWarnings((current) => [...current, ...importedWarnings]);
     if (!selectedTrackId && imported[0]) {
       setSelectedTrackId(imported[0].id);
@@ -358,6 +395,22 @@ export function SubtitleWorkbench() {
           : candidate,
       ),
     );
+  }
+
+  function recordTrackDocument(track: Track) {
+    if (!track.sourceBytes) {
+      return;
+    }
+    const sourceBytes = track.sourceBytes;
+    setDocumentHistory((current) => ({
+      ...current,
+      [track.id]: recordAcceptedDocument(current[track.id], sourceBytes),
+    }));
+  }
+
+  function acceptTrackDocument(track: Track, edited: CueEditResult) {
+    recordTrackDocument(track);
+    replaceTrackDocument(track, edited);
   }
 
   function clearCueDraft(trackId: string, cueIndex: number) {
@@ -444,7 +497,7 @@ export function SubtitleWorkbench() {
         endMs,
         rawText: draft.rawText,
       });
-      replaceTrackDocument(track, edited);
+      acceptTrackDocument(track, edited);
       clearCueDraft(track.id, cueIndex);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
@@ -483,7 +536,7 @@ export function SubtitleWorkbench() {
         splitMs: Math.trunc(playheadMs - track.offsetMs),
         textOffsetUtf16: textarea.selectionStart,
       });
-      replaceTrackDocument(track, edited);
+      acceptTrackDocument(track, edited);
       remapCueDrafts(track.id, (draftIndex) => {
         if (draftIndex === cueIndex) {
           return undefined;
@@ -519,7 +572,7 @@ export function SubtitleWorkbench() {
       let source = await applyCueDraftToSource(track.sourceBytes, track, cueIndex, cue);
       source = await applyCueDraftToSource(source, track, cueIndex + 1, nextCue);
       const edited = await mergeSubtitleCues(source, cueIndex);
-      replaceTrackDocument(track, edited);
+      acceptTrackDocument(track, edited);
       remapCueDrafts(track.id, (draftIndex) => {
         if (draftIndex === cueIndex || draftIndex === cueIndex + 1) {
           return undefined;
@@ -528,6 +581,75 @@ export function SubtitleWorkbench() {
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cues could not be merged.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
+  function trackHasCueDrafts(trackId: string) {
+    return Object.keys(cueDrafts).some((key) => key.startsWith(`${trackId}:`));
+  }
+
+  async function restoreAcceptedDocument(track: Track, direction: "undo" | "redo") {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
+    if (!track.sourceBytes) {
+      setError("This track does not have an editable source document.");
+      return;
+    }
+    if (trackHasCueDrafts(track.id)) {
+      setError("Save pending cue drafts before using undo or redo.");
+      return;
+    }
+
+    const history = documentHistory[track.id];
+    const step = direction === "undo"
+      ? undoAcceptedDocument(history, track.sourceBytes)
+      : redoAcceptedDocument(history, track.sourceBytes);
+    if (!step) {
+      return;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`${direction === "undo" ? "Undoing" : "Redoing"} accepted cue edit…`);
+    setError("");
+    try {
+      const copy = new Uint8Array(step.source.byteLength);
+      copy.set(step.source);
+      const restored = await parseSubtitle(
+        new File([copy.buffer], `history.${sourceExtension(track.format)}`),
+      );
+      if (restored.warnings.length > 0) {
+        throw new Error(
+          `The stored ${direction} state could not be restored losslessly: ${restored.warnings.join(" ")}`,
+        );
+      }
+      setTracks((current) =>
+        current.map((candidate) =>
+          candidate.id === track.id
+            ? {
+                ...candidate,
+                format: restored.format,
+                codec: restored.format,
+                cues: restored.cues,
+                sourceBytes: step.source,
+              }
+            : candidate,
+        ),
+      );
+      setDocumentHistory((current) => ({
+        ...current,
+        [track.id]: step.history,
+      }));
+      for (const key of Object.keys(cueTextRefs.current)) {
+        if (key.startsWith(`${track.id}:`)) {
+          delete cueTextRefs.current[key];
+        }
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `The ${direction} operation failed.`);
     } finally {
       cueEditInFlightRef.current = false;
       setBusy("");
@@ -549,6 +671,7 @@ export function SubtitleWorkbench() {
 
   function removeTrack(id: string) {
     setTracks((current) => current.filter((track) => track.id !== id));
+    clearTrackBrowserState(new Set([id]));
     if (selectedTrackId === id) {
       setSelectedTrackId("");
     }
@@ -811,7 +934,27 @@ export function SubtitleWorkbench() {
                 Move down
               </button>
               {selectedTrack.sourceBytes ? (
-                <button type="button" onClick={() => downloadSourceTrack(selectedTrack)}>Download source</button>
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy) || selectedTrackHasDrafts || !selectedHistory?.undo.length}
+                    title={selectedTrackHasDrafts ? "Save pending cue drafts before undoing accepted edits." : undefined}
+                    onClick={() => restoreAcceptedDocument(selectedTrack, "undo")}
+                  >
+                    Undo edit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy) || selectedTrackHasDrafts || !selectedHistory?.redo.length}
+                    title={selectedTrackHasDrafts ? "Save pending cue drafts before redoing accepted edits." : undefined}
+                    onClick={() => restoreAcceptedDocument(selectedTrack, "redo")}
+                  >
+                    Redo edit
+                  </button>
+                  <button type="button" onClick={() => downloadSourceTrack(selectedTrack)}>Download source</button>
+                </>
               ) : null}
               <button type="button" onClick={() => downloadTrack(selectedTrack, "srt")}>Convert to SRT</button>
               <button type="button" onClick={() => downloadTrack(selectedTrack, "vtt")}>Convert to VTT</button>
@@ -832,7 +975,7 @@ export function SubtitleWorkbench() {
 
           {selectedTrack.sourceBytes ? (
             <p className="merge-note">
-              Cue timing, text, split, and merge edits are applied atomically through Rust before replacing this track. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
+              Cue timing, text, split, and merge edits are applied atomically through Rust before replacing this track. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. Undo/redo keeps up to 20 accepted source-document states in browser memory and reparses a restored state through Rust; save pending drafts first. Track offset and track ordering are not part of this source-edit history. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
             </p>
           ) : (
             <p className="merge-note">
