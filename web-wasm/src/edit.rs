@@ -1,5 +1,6 @@
 use super::{clean_ass_text, push_json_string, return_json};
-use super::document::{parse_document, serialize_document, DocumentFormat};
+use super::document::{parse_document, DocumentFormat};
+use super::source_rewrite::serialize_edited_document;
 
 const MAX_SOURCE_BYTES: usize = 128 * 1024 * 1024;
 const MAX_CUE_TEXT_BYTES: usize = 8 * 1024 * 1024;
@@ -117,7 +118,7 @@ fn apply_edit(source: &[u8], edit: &CueEdit) -> Result<String, String> {
         DocumentFormat::Srt | DocumentFormat::WebVtt => edit.raw_text.clone(),
     };
 
-    let content = serialize_document(&document);
+    let content = serialize_edited_document(source, &document, edit.cue_index)?;
     let reparsed = parse_document(content.as_bytes());
     let reparsed_cue = reparsed.cues.get(edit.cue_index);
     let edit_roundtrips = reparsed.warnings.is_empty()
