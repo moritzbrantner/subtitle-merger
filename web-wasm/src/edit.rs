@@ -93,6 +93,13 @@ fn apply_edit(source: &[u8], edit: &CueEdit) -> Result<String, String> {
     }
 
     let mut document = parse_document(source);
+    if !document.warnings.is_empty() {
+        return Err(format!(
+            "This subtitle document cannot be edited losslessly because parsing reported: {}",
+            document.warnings.join(" ")
+        ));
+    }
+
     let format = document.format.clone();
     let cue_count = document.cues.len();
     let cue = document.cues.get_mut(edit.cue_index).ok_or_else(|| {
@@ -110,7 +117,25 @@ fn apply_edit(source: &[u8], edit: &CueEdit) -> Result<String, String> {
         DocumentFormat::Srt | DocumentFormat::WebVtt => edit.raw_text.clone(),
     };
 
-    Ok(serialize_document(&document))
+    let content = serialize_document(&document);
+    let reparsed = parse_document(content.as_bytes());
+    let reparsed_cue = reparsed.cues.get(edit.cue_index);
+    let edit_roundtrips = reparsed.warnings.is_empty()
+        && reparsed.format == document.format
+        && reparsed.cues.len() == cue_count
+        && reparsed_cue.is_some_and(|cue| {
+            cue.start_ms == edit.start_ms
+                && cue.end_ms == edit.end_ms
+                && cue.raw_text == edit.raw_text
+        });
+    if !edit_roundtrips {
+        return Err(
+            "This cue edit cannot be represented losslessly in the source subtitle format. Remove structural blank lines or unsupported source formatting and try again."
+                .into(),
+        );
+    }
+
+    Ok(content)
 }
 
 fn success_json(content: &str) -> String {
@@ -204,6 +229,42 @@ mod tests {
         assert!(apply_edit(source, &edit(0, 3_000, 2_000, "Hello")).is_err());
         assert!(apply_edit(source, &edit(2, 1_000, 2_000, "Hello")).is_err());
         assert!(apply_edit(source, &edit(0, 1_000, 2_000, "   ")).is_err());
+    }
+
+    #[test]
+    fn rejects_srt_text_that_escapes_the_cue_block() {
+        let source = b"1\n00:00:01,000 --> 00:00:02,000\nHello\n\n";
+        let error = apply_edit(source, &edit(0, 1_000, 2_000, "first\n\nsecond"))
+            .unwrap_err();
+
+        assert!(error.contains("cannot be represented losslessly"));
+    }
+
+    #[test]
+    fn rejects_webvtt_text_that_escapes_the_cue_block() {
+        let source = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n\n";
+        let error = apply_edit(
+            source,
+            &edit(
+                0,
+                1_000,
+                2_000,
+                "first\n\n00:00:03.000 --> 00:00:04.000\ninjected",
+            ),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("cannot be represented losslessly"));
+    }
+
+    #[test]
+    fn refuses_to_edit_a_source_document_that_was_parsed_lossily() {
+        let source = b"1\n00:00:01,000 --> 00:00:02,000\nKeep me\n\nbroken block without timing\n";
+        let error = apply_edit(source, &edit(0, 1_100, 2_100, "Edited"))
+            .unwrap_err();
+
+        assert!(error.contains("cannot be edited losslessly"));
+        assert!(error.contains("Skipped an SRT block without a timing line."));
     }
 
     #[test]
