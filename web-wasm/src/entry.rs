@@ -5,6 +5,8 @@ mod document;
 mod edit;
 // Preserve source metadata ordering while splicing Rust-serialized cue edits back into the document.
 mod source_rewrite;
+// Structural split/merge operations remain Rust-owned and fail closed on metadata loss.
+mod structure;
 // Deterministic track ordering, timing transforms, overlap handling, and merged serialization are Rust-owned.
 mod merge;
 mod range_inspection;
