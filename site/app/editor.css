@@ -52,8 +52,97 @@
   gap: 8px;
 }
 
+.cue-block-shell {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  min-width: 2px;
+}
+
+.cue-block-shell .cue-block {
+  inset: 0;
+  width: 100%;
+  min-width: 2px;
+  height: 100%;
+}
+
+.cue-block-shell.is-editable .cue-block {
+  cursor: grab;
+  touch-action: none;
+}
+
+.cue-block-shell.is-editable .cue-block:active,
+.cue-block-shell.is-previewing .cue-block {
+  cursor: grabbing;
+  background: rgba(184, 235, 255, 0.9);
+}
+
+.cue-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: -2px;
+  bottom: -2px;
+  width: 18px;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+  padding: 0;
+}
+
+.cue-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent-strong);
+}
+
+.cue-resize-start {
+  left: -7px;
+}
+
+.cue-resize-start::after {
+  left: 8px;
+}
+
+.cue-resize-end {
+  right: -7px;
+}
+
+.cue-resize-end::after {
+  right: 8px;
+}
+
+.cue-resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 @media (max-width: 760px) {
   .cue-field textarea {
     min-width: 14rem;
+  }
+
+  .cue-resize-handle {
+    width: 24px;
+  }
+
+  .cue-resize-start {
+    left: -10px;
+  }
+
+  .cue-resize-start::after {
+    left: 11px;
+  }
+
+  .cue-resize-end {
+    right: -10px;
+  }
+
+  .cue-resize-end::after {
+    right: 11px;
   }
 }
