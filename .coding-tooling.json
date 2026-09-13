@@ -13,5 +13,9 @@
       "test:unit": ["bash", "-lc", "bun run --cwd frontend test && cargo test --manifest-path backend/Cargo.toml"],
       "test:e2e": ["bun", "run", "test:e2e"]
     }
+  },
+  "merge": {
+    "authority": "hosted",
+    "requiredChecks": ["check"]
   }
 }
