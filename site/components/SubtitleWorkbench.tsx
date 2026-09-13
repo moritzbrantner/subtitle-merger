@@ -11,8 +11,11 @@ import type { Cue, Track, VideoInspection } from "../lib/types";
 import {
   editSubtitleCue,
   inspectVideo,
+  mergeSubtitleCues,
   mergeTracks,
   parseSubtitle,
+  splitSubtitleCue,
+  type CueEditResult,
   type MergeFormat,
 } from "../lib/wasm";
 
@@ -126,6 +129,7 @@ export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const inspectionAbortRef = useRef<AbortController | null>(null);
   const cueEditInFlightRef = useRef(false);
+  const cueTextRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -339,6 +343,69 @@ export function SubtitleWorkbench() {
     }));
   }
 
+  function replaceTrackDocument(track: Track, edited: CueEditResult) {
+    const sourceBytes = new TextEncoder().encode(edited.content);
+    setTracks((current) =>
+      current.map((candidate) =>
+        candidate.id === track.id
+          ? {
+              ...candidate,
+              format: edited.format,
+              codec: edited.format,
+              cues: edited.cues,
+              sourceBytes,
+            }
+          : candidate,
+      ),
+    );
+  }
+
+  function clearCueDrafts(trackId: string, cueIndex?: number) {
+    const prefix = `${trackId}:`;
+    setCueDrafts((current) => {
+      const next = { ...current };
+      if (cueIndex === undefined) {
+        for (const key of Object.keys(next)) {
+          if (key.startsWith(prefix)) {
+            delete next[key];
+          }
+        }
+      } else {
+        delete next[cueDraftKey(trackId, cueIndex)];
+      }
+      return next;
+    });
+    if (cueIndex === undefined) {
+      for (const key of Object.keys(cueTextRefs.current)) {
+        if (key.startsWith(prefix)) {
+          delete cueTextRefs.current[key];
+        }
+      }
+    }
+  }
+
+  async function applyCueDraftToSource(
+    source: Uint8Array,
+    track: Track,
+    cueIndex: number,
+    cue: Cue,
+  ) {
+    const draft = cueDrafts[cueDraftKey(track.id, cueIndex)];
+    if (!draft) {
+      return source;
+    }
+    if (draft.startMs.trim() === "" || draft.endMs.trim() === "") {
+      throw new Error("Cue start and end times are required.");
+    }
+    const edited = await editSubtitleCue(source, {
+      cueIndex,
+      startMs: Number(draft.startMs),
+      endMs: Number(draft.endMs),
+      rawText: draft.rawText,
+    });
+    return new TextEncoder().encode(edited.content);
+  }
+
   async function saveCueEdit(track: Track, cueIndex: number, cue: Cue) {
     if (cueEditInFlightRef.current) {
       return;
@@ -366,27 +433,76 @@ export function SubtitleWorkbench() {
         endMs,
         rawText: draft.rawText,
       });
-      const sourceBytes = new TextEncoder().encode(edited.content);
-      setTracks((current) =>
-        current.map((candidate) =>
-          candidate.id === track.id
-            ? {
-                ...candidate,
-                format: edited.format,
-                codec: edited.format,
-                cues: edited.cues,
-                sourceBytes,
-              }
-            : candidate,
-        ),
-      );
-      setCueDrafts((current) => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
+      replaceTrackDocument(track, edited);
+      clearCueDrafts(track.id, cueIndex);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
+  async function splitCueAtPlayhead(track: Track, cueIndex: number, cue: Cue) {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
+    if (!track.sourceBytes) {
+      setError("This embedded track does not yet retain a source document for lossless editing.");
+      return;
+    }
+    const key = cueDraftKey(track.id, cueIndex);
+    const textarea = cueTextRefs.current[key];
+    if (!textarea) {
+      setError("The cue text editor is not available for splitting.");
+      return;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Splitting cue ${cueIndex + 1} through Rust/WASM…`);
+    setError("");
+    try {
+      const source = await applyCueDraftToSource(track.sourceBytes, track, cueIndex, cue);
+      const edited = await splitSubtitleCue(source, {
+        cueIndex,
+        splitMs: Math.trunc(positionMs - track.offsetMs),
+        textOffsetUtf16: textarea.selectionStart,
+      });
+      replaceTrackDocument(track, edited);
+      clearCueDrafts(track.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cue could not be split.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
+  async function mergeCueWithNext(track: Track, cueIndex: number, cue: Cue) {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
+    if (!track.sourceBytes) {
+      setError("This embedded track does not yet retain a source document for lossless editing.");
+      return;
+    }
+    const nextCue = track.cues[cueIndex + 1];
+    if (!nextCue) {
+      setError("Merge requires a following cue.");
+      return;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Merging cue ${cueIndex + 1} with the next cue through Rust/WASM…`);
+    setError("");
+    try {
+      let source = await applyCueDraftToSource(track.sourceBytes, track, cueIndex, cue);
+      source = await applyCueDraftToSource(source, track, cueIndex + 1, nextCue);
+      const edited = await mergeSubtitleCues(source, cueIndex);
+      replaceTrackDocument(track, edited);
+      clearCueDrafts(track.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cues could not be merged.");
     } finally {
       cueEditInFlightRef.current = false;
       setBusy("");
@@ -691,7 +807,7 @@ export function SubtitleWorkbench() {
 
           {selectedTrack.sourceBytes ? (
             <p className="merge-note">
-              Cue timing and source text edits are applied atomically by Rust and then reparsed before replacing this track. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
+              Cue timing, text, split, and merge edits are applied atomically through Rust before replacing this track. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
             </p>
           ) : (
             <p className="merge-note">
@@ -751,6 +867,9 @@ export function SubtitleWorkbench() {
                           <label className="cue-field cue-text-field">
                             <span className="sr-only">Cue {index + 1} source text</span>
                             <textarea
+                              ref={(node) => {
+                                cueTextRefs.current[key] = node;
+                              }}
                               rows={2}
                               value={draft.rawText}
                               onChange={(event) => setCueDraftValue(selectedTrack, index, cue, "rawText", event.currentTarget.value)}
@@ -762,7 +881,18 @@ export function SubtitleWorkbench() {
                         <div className="cue-actions">
                           <button type="button" className="secondary-button" onClick={() => seek(adjusted.startMs)}>Seek</button>
                           {selectedTrack.sourceBytes ? (
-                            <button type="button" disabled={Boolean(busy)} onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
+                            <>
+                              <button type="button" disabled={Boolean(busy)} onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
+                              <button type="button" disabled={Boolean(busy)} onClick={() => splitCueAtPlayhead(selectedTrack, index, cue)}>Split at playhead</button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={Boolean(busy) || index >= selectedTrack.cues.length - 1}
+                                onClick={() => mergeCueWithNext(selectedTrack, index, cue)}
+                              >
+                                Merge next
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </td>
