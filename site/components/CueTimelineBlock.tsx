@@ -1,15 +1,21 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 
-import type { Cue } from "../lib/types";
+import { formatClock } from "../lib/subtitles";
 import {
   pointerDeltaToMilliseconds,
   previewCueTiming,
   type CueTiming,
   type TimelineCueEditMode,
 } from "../lib/timeline-edit";
-import { formatClock } from "../lib/subtitles";
+import type { Cue } from "../lib/types";
 
 type Props = {
   cue: Cue;
@@ -47,8 +53,8 @@ export function CueTimelineBlock({
   onCommitTiming,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const gestureRef = useRef<Gesture>();
-  const previewRef = useRef<CueTiming>();
+  const gestureRef = useRef<Gesture | undefined>(undefined);
+  const previewRef = useRef<CueTiming | undefined>(undefined);
   const suppressClickRef = useRef(false);
   const [preview, setPreview] = useState<CueTiming>();
   const [committing, setCommitting] = useState(false);
@@ -99,9 +105,8 @@ export function CueTimelineBlock({
     if (!gesture || gesture.pointerId !== event.pointerId) {
       return;
     }
-    const deltaPixels = event.clientX - gesture.startX;
     const deltaMs = pointerDeltaToMilliseconds(
-      deltaPixels,
+      event.clientX - gesture.startX,
       gesture.laneWidth,
       timelineDurationMs,
     );
@@ -112,7 +117,10 @@ export function CueTimelineBlock({
       timelineDurationMs,
       trackOffsetMs,
     );
-    if (Math.abs(deltaPixels) >= 2) {
+    if (
+      next.startMs !== gesture.timing.startMs
+      || next.endMs !== gesture.timing.endMs
+    ) {
       suppressClickRef.current = true;
     }
     setPreviewTiming(next);
@@ -170,7 +178,7 @@ export function CueTimelineBlock({
     void commitTiming(next);
   }
 
-  function handleCueClick(event: React.MouseEvent<HTMLButtonElement>) {
+  function handleCueClick(event: MouseEvent<HTMLButtonElement>) {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       event.preventDefault();
