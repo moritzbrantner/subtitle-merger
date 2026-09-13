@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "bun test ./lib/document-history.test.mjs",
+    "test": "bun test ./lib/document-history.test.mjs ./lib/timeline-edit.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
