@@ -360,26 +360,37 @@ export function SubtitleWorkbench() {
     );
   }
 
-  function clearCueDrafts(trackId: string, cueIndex?: number) {
-    const prefix = `${trackId}:`;
+  function clearCueDraft(trackId: string, cueIndex: number) {
     setCueDrafts((current) => {
       const next = { ...current };
-      if (cueIndex === undefined) {
-        for (const key of Object.keys(next)) {
-          if (key.startsWith(prefix)) {
-            delete next[key];
-          }
+      delete next[cueDraftKey(trackId, cueIndex)];
+      return next;
+    });
+  }
+
+  function remapCueDrafts(
+    trackId: string,
+    remap: (cueIndex: number) => number | undefined,
+  ) {
+    const prefix = `${trackId}:`;
+    setCueDrafts((current) => {
+      const next: Record<string, CueDraft> = {};
+      for (const [key, draft] of Object.entries(current)) {
+        if (!key.startsWith(prefix)) {
+          next[key] = draft;
+          continue;
         }
-      } else {
-        delete next[cueDraftKey(trackId, cueIndex)];
+        const sourceIndex = Number(key.slice(prefix.length));
+        const targetIndex = remap(sourceIndex);
+        if (targetIndex !== undefined) {
+          next[cueDraftKey(trackId, targetIndex)] = draft;
+        }
       }
       return next;
     });
-    if (cueIndex === undefined) {
-      for (const key of Object.keys(cueTextRefs.current)) {
-        if (key.startsWith(prefix)) {
-          delete cueTextRefs.current[key];
-        }
+    for (const key of Object.keys(cueTextRefs.current)) {
+      if (key.startsWith(prefix)) {
+        delete cueTextRefs.current[key];
       }
     }
   }
@@ -434,7 +445,7 @@ export function SubtitleWorkbench() {
         rawText: draft.rawText,
       });
       replaceTrackDocument(track, edited);
-      clearCueDrafts(track.id, cueIndex);
+      clearCueDraft(track.id, cueIndex);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue edit could not be applied.");
     } finally {
@@ -457,6 +468,10 @@ export function SubtitleWorkbench() {
       setError("The cue text editor is not available for splitting.");
       return;
     }
+    const mediaTimeSeconds = videoRef.current?.currentTime;
+    const playheadMs = mediaTimeSeconds !== undefined && Number.isFinite(mediaTimeSeconds)
+      ? mediaTimeSeconds * 1000
+      : positionMs;
 
     cueEditInFlightRef.current = true;
     setBusy(`Splitting cue ${cueIndex + 1} through Rust/WASM…`);
@@ -465,11 +480,16 @@ export function SubtitleWorkbench() {
       const source = await applyCueDraftToSource(track.sourceBytes, track, cueIndex, cue);
       const edited = await splitSubtitleCue(source, {
         cueIndex,
-        splitMs: Math.trunc(positionMs - track.offsetMs),
+        splitMs: Math.trunc(playheadMs - track.offsetMs),
         textOffsetUtf16: textarea.selectionStart,
       });
       replaceTrackDocument(track, edited);
-      clearCueDrafts(track.id);
+      remapCueDrafts(track.id, (draftIndex) => {
+        if (draftIndex === cueIndex) {
+          return undefined;
+        }
+        return draftIndex > cueIndex ? draftIndex + 1 : draftIndex;
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cue could not be split.");
     } finally {
@@ -500,7 +520,12 @@ export function SubtitleWorkbench() {
       source = await applyCueDraftToSource(source, track, cueIndex + 1, nextCue);
       const edited = await mergeSubtitleCues(source, cueIndex);
       replaceTrackDocument(track, edited);
-      clearCueDrafts(track.id);
+      remapCueDrafts(track.id, (draftIndex) => {
+        if (draftIndex === cueIndex || draftIndex === cueIndex + 1) {
+          return undefined;
+        }
+        return draftIndex > cueIndex + 1 ? draftIndex - 1 : draftIndex;
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The cues could not be merged.");
     } finally {
