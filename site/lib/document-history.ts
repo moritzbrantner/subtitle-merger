@@ -1,21 +1,38 @@
 const MAX_HISTORY_ENTRIES = 20;
+const MAX_HISTORY_BYTES = 64 * 1024 * 1024;
 
 export type DocumentHistory = {
   undo: Uint8Array[];
   redo: Uint8Array[];
 };
 
-export function emptyDocumentHistory(): DocumentHistory {
-  return { undo: [], redo: [] };
+function trimHistory(entries: Uint8Array[]): Uint8Array[] {
+  let start = entries.length;
+  let bytes = 0;
+  let count = 0;
+
+  while (start > 0 && count < MAX_HISTORY_ENTRIES) {
+    const entry = entries[start - 1];
+    if (count > 0 && bytes + entry.byteLength > MAX_HISTORY_BYTES) {
+      break;
+    }
+    start -= 1;
+    count += 1;
+    bytes += entry.byteLength;
+    if (bytes >= MAX_HISTORY_BYTES) {
+      break;
+    }
+  }
+
+  return entries.slice(start);
 }
 
 export function recordAcceptedDocument(
   history: DocumentHistory | undefined,
   currentSource: Uint8Array,
 ): DocumentHistory {
-  const undo = [...(history?.undo ?? []), currentSource];
   return {
-    undo: undo.slice(-MAX_HISTORY_ENTRIES),
+    undo: trimHistory([...(history?.undo ?? []), currentSource]),
     redo: [],
   };
 }
@@ -32,7 +49,7 @@ export function undoAcceptedDocument(
     source,
     history: {
       undo: history.undo.slice(0, -1),
-      redo: [...history.redo, currentSource].slice(-MAX_HISTORY_ENTRIES),
+      redo: trimHistory([...history.redo, currentSource]),
     },
   };
 }
@@ -48,7 +65,7 @@ export function redoAcceptedDocument(
   return {
     source,
     history: {
-      undo: [...history.undo, currentSource].slice(-MAX_HISTORY_ENTRIES),
+      undo: trimHistory([...history.undo, currentSource]),
       redo: history.redo.slice(0, -1),
     },
   };
