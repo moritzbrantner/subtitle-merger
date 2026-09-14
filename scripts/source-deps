@@ -2,15 +2,49 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
-tooling_dir="${CODING_TOOLING_DIR:-$root/../coding-tooling}"
+action="${1:-status}"
+
+bridge_source() {
+  local name="$1"
+  local override="$2"
+  local fallback="$3"
+  local target="$root/.source/$name"
+  local source="$override"
+
+  if [[ -e "$target" || -L "$target" ]]; then
+    return
+  fi
+  if [[ -z "$source" ]]; then
+    source="$fallback"
+  fi
+  if [[ ! -d "$source" ]]; then
+    return
+  fi
+
+  mkdir -p "$root/.source"
+  ln -s "$(cd "$source" && pwd)" "$target"
+}
+
+if [[ "$action" == "prepare" || "$action" == "activate" ]]; then
+  bridge_source "editor-core" "${EDITOR_CORE_SOURCE:-}" "$root/../editor-core"
+  bridge_source "timeline-editor" "${TIMELINE_EDITOR_SOURCE:-}" "$root/../timeline-editor"
+fi
+
+if [[ -n "${CODING_TOOLING_DIR:-}" ]]; then
+  tooling_dir="$CODING_TOOLING_DIR"
+elif [[ -f "$root/../coding-tooling/src/router.ts" ]]; then
+  tooling_dir="$root/../coding-tooling"
+else
+  tooling_dir="$root/.source/coding-tooling"
+fi
 
 if command -v coding-tooling >/dev/null 2>&1; then
   exec coding-tooling source-deps "$@"
 fi
 
-if [[ -f "$tooling_dir/src/cli.ts" ]]; then
-  exec bun "$tooling_dir/src/cli.ts" source-deps "$@"
+if [[ -f "$tooling_dir/src/router.ts" ]]; then
+  exec bun "$tooling_dir/src/router.ts" source-deps "$@"
 fi
 
-printf '%s\n' "coding-tooling is required. Install it or set CODING_TOOLING_DIR to a sibling checkout." >&2
+printf '%s\n' "coding-tooling is required. Install it, keep a sibling checkout, or set CODING_TOOLING_DIR." >&2
 exit 2
