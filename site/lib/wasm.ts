@@ -12,6 +12,7 @@ type WasmExports = {
   parse_subtitle_document: (ptr: number, len: number) => bigint;
   analyze_subtitle_quality: (ptr: number, len: number) => bigint;
   edit_subtitle_document: (ptr: number, len: number) => bigint;
+  correct_subtitle_drift: (ptr: number, len: number) => bigint;
   split_subtitle_cue: (ptr: number, len: number) => bigint;
   merge_subtitle_cues: (ptr: number, len: number) => bigint;
   merge_tracks: (ptr: number, len: number, format: number) => bigint;
@@ -42,6 +43,13 @@ export type CueSplit = {
   cueIndex: number;
   splitMs: number;
   textOffsetUtf16: number;
+};
+
+export type DriftCorrection = {
+  sourceStartMs: number;
+  expectedStartMs: number;
+  sourceEndMs: number;
+  expectedEndMs: number;
 };
 
 export type CueEditResult = ParsedSubtitle & {
@@ -130,6 +138,12 @@ function validateSource(source: Uint8Array, label: string) {
   }
 }
 
+function validateMilliseconds(value: number, label: string) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer number of milliseconds.`);
+  }
+}
+
 export async function analyzeSubtitleQuality(
   source: Uint8Array,
 ): Promise<SubtitleQualityReport> {
@@ -202,7 +216,7 @@ function encodeCueEdit(source: Uint8Array, edit: CueEdit): Uint8Array {
   return bytes;
 }
 
-async function invokeCueDocumentTransform(
+async function invokeDocumentTransform(
   bytes: Uint8Array,
   invoke: (wasm: WasmExports, ptr: number, len: number) => bigint,
   allocationLabel: string,
@@ -238,10 +252,55 @@ export async function editSubtitleCue(
   edit: CueEdit,
 ): Promise<CueEditResult> {
   const bytes = encodeCueEdit(source, edit);
-  return invokeCueDocumentTransform(
+  return invokeDocumentTransform(
     bytes,
     (wasm, ptr, len) => wasm.edit_subtitle_document(ptr, len),
     "cue edit",
+  );
+}
+
+function encodeDriftCorrection(
+  source: Uint8Array,
+  correction: DriftCorrection,
+): Uint8Array {
+  validateSource(source, "drift correction");
+  validateMilliseconds(correction.sourceStartMs, "First source anchor");
+  validateMilliseconds(correction.expectedStartMs, "First expected anchor");
+  validateMilliseconds(correction.sourceEndMs, "Second source anchor");
+  validateMilliseconds(correction.expectedEndMs, "Second expected anchor");
+
+  const length = 4 + source.byteLength + 8 * 4;
+  if (length > 0xffff_ffff) {
+    throw new Error("This drift-correction request is too large for the current WebAssembly memory interface.");
+  }
+  const bytes = new Uint8Array(length);
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  view.setUint32(offset, source.byteLength, true);
+  offset += 4;
+  bytes.set(source, offset);
+  offset += source.byteLength;
+  for (const value of [
+    correction.sourceStartMs,
+    correction.expectedStartMs,
+    correction.sourceEndMs,
+    correction.expectedEndMs,
+  ]) {
+    view.setBigUint64(offset, BigInt(value), true);
+    offset += 8;
+  }
+  return bytes;
+}
+
+export async function correctSubtitleDrift(
+  source: Uint8Array,
+  correction: DriftCorrection,
+): Promise<CueEditResult> {
+  const bytes = encodeDriftCorrection(source, correction);
+  return invokeDocumentTransform(
+    bytes,
+    (wasm, ptr, len) => wasm.correct_subtitle_drift(ptr, len),
+    "drift correction",
   );
 }
 
@@ -283,7 +342,7 @@ export async function splitSubtitleCue(
   split: CueSplit,
 ): Promise<CueEditResult> {
   const bytes = encodeCueSplit(source, split);
-  return invokeCueDocumentTransform(
+  return invokeDocumentTransform(
     bytes,
     (wasm, ptr, len) => wasm.split_subtitle_cue(ptr, len),
     "cue split",
@@ -310,7 +369,7 @@ export async function mergeSubtitleCues(
   cueIndex: number,
 ): Promise<CueEditResult> {
   const bytes = encodeCueMerge(source, cueIndex);
-  return invokeCueDocumentTransform(
+  return invokeDocumentTransform(
     bytes,
     (wasm, ptr, len) => wasm.merge_subtitle_cues(ptr, len),
     "cue merge",
@@ -360,7 +419,7 @@ function encodeMergeTracks(tracks: Track[]): Uint8Array {
   for (const item of prepared) {
     i64(item.track.offsetMs);
     buffer(item.title);
-    u32(item.cues.length);
+    u32(item.track.cues.length);
     for (const itemCue of item.cues) {
       u64(itemCue.cue.startMs);
       u64(itemCue.cue.endMs);
