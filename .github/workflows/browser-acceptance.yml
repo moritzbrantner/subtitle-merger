@@ -13,19 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      CODING_TOOLING_DIR: ${{ github.workspace }}/.source/coding-tooling
       EDITOR_CORE_SOURCE: ${{ github.workspace }}/.source/editor-core
       TIMELINE_EDITOR_SOURCE: ${{ github.workspace }}/.source/timeline-editor
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Check out coding-tooling source dependency runtime
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          repository: moritzbrantner/coding-tooling
+          ref: 5ec46364ed9acf477dde5b07a48b81f30b8ddc5c
+          path: .source/coding-tooling
       - name: Check out editor-core source
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           repository: moritzbrantner/editor-core
+          ref: 1a52e27ddacc5daa8b39713e9de8edd1c498c640
           path: .source/editor-core
       - name: Check out timeline-editor source
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           repository: moritzbrantner/timeline-editor
+          ref: 716eb6b5c4a66a18c57e5d0507fdfdcd3a3a89f5
           path: .source/timeline-editor
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
