@@ -11,18 +11,45 @@ bridge_source() {
   local target="$root/.source/$name"
   local source="$override"
 
-  if [[ -e "$target" || -L "$target" ]]; then
-    return
-  fi
   if [[ -z "$source" ]]; then
     source="$fallback"
   fi
+
   if [[ ! -d "$source" ]]; then
+    if [[ -n "$override" ]]; then
+      printf '%s\n' "source override does not exist for $name: $source" >&2
+      exit 2
+    fi
+    return
+  fi
+
+  local source_real
+  source_real="$(cd "$source" && pwd -P)"
+
+  if [[ -L "$target" ]]; then
+    if [[ -e "$target" ]]; then
+      local target_real
+      target_real="$(cd "$target" && pwd -P)"
+      if [[ "$target_real" == "$source_real" ]]; then
+        return
+      fi
+    fi
+    rm "$target"
+  elif [[ -e "$target" ]]; then
+    local target_real
+    target_real="$(cd "$target" && pwd -P)"
+    if [[ "$target_real" == "$source_real" ]]; then
+      return
+    fi
+    if [[ -n "$override" ]]; then
+      printf '%s\n' "refusing to replace real checkout at $target with override $source_real" >&2
+      exit 2
+    fi
     return
   fi
 
   mkdir -p "$root/.source"
-  ln -s "$(cd "$source" && pwd)" "$target"
+  ln -s "$source_real" "$target"
 }
 
 if [[ "$action" == "prepare" || "$action" == "activate" || "$action" == "verify-graph" ]]; then
