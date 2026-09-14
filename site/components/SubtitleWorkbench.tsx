@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { CueTimelineBlock } from "./CueTimelineBlock";
+import { DriftCorrectionPanel } from "./DriftCorrectionPanel";
 import { SubtitleQualityPanel } from "./SubtitleQualityPanel";
 import {
   recordAcceptedDocument,
@@ -10,6 +11,12 @@ import {
   undoAcceptedDocument,
   type DocumentHistory,
 } from "../lib/document-history";
+import {
+  capturedDriftAnchor,
+  driftCorrectionRequest,
+  emptyDriftCorrectionDraft,
+  type DriftCorrectionDraft,
+} from "../lib/drift-view";
 import {
   currentCue,
   formatClock,
@@ -23,6 +30,7 @@ import type {
 } from "../lib/types";
 import {
   analyzeSubtitleQuality,
+  correctSubtitleDrift,
   editSubtitleCue,
   inspectVideo,
   mergeSubtitleCues,
@@ -152,6 +160,7 @@ export function SubtitleWorkbench() {
   const [selectedTrackId, setSelectedTrackId] = useState("");
   const [cueDrafts, setCueDrafts] = useState<Record<string, CueDraft>>({});
   const [documentHistory, setDocumentHistory] = useState<Record<string, DocumentHistory>>({});
+  const [driftDraft, setDriftDraft] = useState<DriftCorrectionDraft>(emptyDriftCorrectionDraft);
   const [positionMs, setPositionMs] = useState(0);
   const [videoDurationMs, setVideoDurationMs] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -196,6 +205,10 @@ export function SubtitleWorkbench() {
   const selectedTrackHasDrafts = selectedTrack
     ? Object.keys(cueDrafts).some((key) => key.startsWith(`${selectedTrack.id}:`))
     : false;
+
+  useEffect(() => {
+    setDriftDraft(emptyDriftCorrectionDraft());
+  }, [selectedTrack?.id, selectedTrack?.sourceBytes]);
 
   useEffect(() => {
     const requestId = ++qualityRequestRef.current;
@@ -420,6 +433,20 @@ export function SubtitleWorkbench() {
       ...current,
       [key]: {
         ...(current[key] ?? draftFromCue(cue)),
+        [field]: value,
+      },
+    }));
+  }
+
+  function setDriftDraftValue(
+    anchor: "first" | "second",
+    field: "sourceMs" | "referenceMs",
+    value: string,
+  ) {
+    setDriftDraft((current) => ({
+      ...current,
+      [anchor]: {
+        ...current[anchor],
         [field]: value,
       },
     }));
@@ -670,6 +697,62 @@ export function SubtitleWorkbench() {
 
   function trackHasCueDrafts(trackId: string) {
     return Object.keys(cueDrafts).some((key) => key.startsWith(`${trackId}:`));
+  }
+
+  function captureDriftAnchor(
+    track: Track,
+    cue: Cue,
+    anchor: "first" | "second",
+  ) {
+    if (cueDrafts[cueDraftKey(track.id, track.cues.indexOf(cue))]) {
+      setError("Save this cue's pending draft before using it as a drift anchor.");
+      return;
+    }
+    const mediaTimeSeconds = videoRef.current?.currentTime;
+    const referenceMs = mediaTimeSeconds !== undefined && Number.isFinite(mediaTimeSeconds)
+      ? mediaTimeSeconds * 1000
+      : positionMs;
+    setDriftDraft((current) => ({
+      ...current,
+      [anchor]: capturedDriftAnchor(cue.startMs, referenceMs),
+    }));
+    setError("");
+  }
+
+  async function applyDriftCorrectionToTrack(track: Track) {
+    if (cueEditInFlightRef.current) {
+      return;
+    }
+    if (!track.sourceBytes) {
+      setError("This track does not have an editable source document for drift correction.");
+      return;
+    }
+    if (trackHasCueDrafts(track.id)) {
+      setError("Save pending cue drafts before applying drift correction.");
+      return;
+    }
+
+    let correction;
+    try {
+      correction = driftCorrectionRequest(driftDraft, track.offsetMs);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The drift anchors are invalid.");
+      return;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Applying two-anchor drift correction to ${track.title} through Rust/WASM…`);
+    setError("");
+    try {
+      const edited = await correctSubtitleDrift(track.sourceBytes, correction);
+      acceptTrackDocument(track, edited);
+      setDriftDraft(emptyDriftCorrectionDraft());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The drift correction could not be applied.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
   }
 
   async function restoreAcceptedDocument(track: Track, direction: "undo" | "redo") {
@@ -1059,6 +1142,18 @@ export function SubtitleWorkbench() {
             <small>Positive values delay this track; negative values move it earlier. Preview plus converted and merged exports use this offset; Download source preserves source-document timing.</small>
           </label>
 
+          <DriftCorrectionPanel
+            trackTitle={selectedTrack.title}
+            trackOffsetMs={selectedTrack.offsetMs}
+            sourceAvailable={Boolean(selectedTrack.sourceBytes)}
+            busy={Boolean(busy)}
+            hasCueDrafts={selectedTrackHasDrafts}
+            draft={driftDraft}
+            onChange={setDriftDraftValue}
+            onClear={() => setDriftDraft(emptyDriftCorrectionDraft())}
+            onApply={() => applyDriftCorrectionToTrack(selectedTrack)}
+          />
+
           <SubtitleQualityPanel
             trackTitle={selectedTrack.title}
             sourceAvailable={Boolean(selectedTrack.sourceBytes)}
@@ -1070,7 +1165,7 @@ export function SubtitleWorkbench() {
 
           {selectedTrack.sourceBytes ? (
             <p className="merge-note">
-              Cue timing, text, split, merge, and timeline timing edits are applied atomically through Rust before replacing this track. Drag a cue to move it; drag its edge handles to resize it. Keyboard focus on the cue or handles uses Left/Right for 100 ms and Shift+Left/Right for one second. Timeline editing is disabled for a cue while it has an unsaved draft. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. Undo/redo keeps accepted source-document states in bounded browser memory and reparses a restored state through Rust; save pending drafts first. Track offset and track ordering are not part of this source-edit history. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
+              Cue timing, text, split, merge, timeline timing, and two-anchor drift correction are applied atomically through Rust before replacing this track. Drift anchors capture a cue's accepted source start against the current reference playhead; the whole-track offset stays separate. Drag a cue to move it; drag its edge handles to resize it. Keyboard focus on the cue or handles uses Left/Right for 100 ms and Shift+Left/Right for one second. Timeline editing and drift application are disabled while there are unsaved cue drafts. Split uses the current video playhead and the source-text caret; Merge next includes any unsaved drafts for both cues. Undo/redo keeps accepted source-document states in bounded browser memory and reparses a restored state through Rust. Track offset and track ordering are not part of this source-edit history. For ASS/SSA and marked-up WebVTT, the source-text field intentionally exposes format markup so editing text does not silently discard it.
             </p>
           ) : (
             <p className="merge-note">
@@ -1093,6 +1188,7 @@ export function SubtitleWorkbench() {
                   const adjusted = shiftedCue(cue, selectedTrack.offsetMs);
                   const key = cueDraftKey(selectedTrack.id, index);
                   const draft = cueDrafts[key] ?? draftFromCue(cue);
+                  const hasDraft = Boolean(cueDrafts[key]);
                   return (
                     <tr key={`${cue.startMs}-${cue.endMs}-${index}`}>
                       <td>
@@ -1148,6 +1244,24 @@ export function SubtitleWorkbench() {
                           <button type="button" className="secondary-button" onClick={() => seek(adjusted.startMs)}>Seek</button>
                           {selectedTrack.sourceBytes ? (
                             <>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={Boolean(busy) || hasDraft}
+                                title={hasDraft ? "Save this cue before using it as a drift anchor." : "Capture this cue start against the current reference playhead."}
+                                onClick={() => captureDriftAnchor(selectedTrack, cue, "first")}
+                              >
+                                Anchor 1
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={Boolean(busy) || hasDraft}
+                                title={hasDraft ? "Save this cue before using it as a drift anchor." : "Capture this cue start against the current reference playhead."}
+                                onClick={() => captureDriftAnchor(selectedTrack, cue, "second")}
+                              >
+                                Anchor 2
+                              </button>
                               <button type="button" disabled={Boolean(busy)} onClick={() => saveCueEdit(selectedTrack, index, cue)}>Save</button>
                               <button type="button" disabled={Boolean(busy)} onClick={() => splitCueAtPlayhead(selectedTrack, index, cue)}>Split at playhead</button>
                               <button
