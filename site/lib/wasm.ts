@@ -1,10 +1,16 @@
-import type { ParsedSubtitle, Track, VideoInspection } from "./types";
+import type {
+  ParsedSubtitle,
+  SubtitleQualityReport,
+  Track,
+  VideoInspection,
+} from "./types";
 
 type WasmExports = {
   memory: WebAssembly.Memory;
   allocate: (len: number) => number;
   deallocate: (ptr: number, len: number) => void;
   parse_subtitle_document: (ptr: number, len: number) => bigint;
+  analyze_subtitle_quality: (ptr: number, len: number) => bigint;
   edit_subtitle_document: (ptr: number, len: number) => bigint;
   split_subtitle_cue: (ptr: number, len: number) => bigint;
   merge_subtitle_cues: (ptr: number, len: number) => bigint;
@@ -44,6 +50,7 @@ export type CueEditResult = ParsedSubtitle & {
 
 type MergePayload = Partial<MergeResult> & { error?: string };
 type CueEditPayload = { content?: string; error?: string };
+type QualityPayload = Partial<SubtitleQualityReport> & { error?: string };
 
 type WorkerMessage =
   | { type: "result"; inspection: VideoInspection }
@@ -120,6 +127,34 @@ function validateCueIndex(cueIndex: number) {
 function validateSource(source: Uint8Array, label: string) {
   if (source.byteLength > 0xffff_ffff) {
     throw new Error(`This subtitle document is too large for the current ${label} interface.`);
+  }
+}
+
+export async function analyzeSubtitleQuality(
+  source: Uint8Array,
+): Promise<SubtitleQualityReport> {
+  validateSource(source, "quality analysis");
+  const wasm = await loadWasm();
+  const inputPtr = wasm.allocate(source.byteLength);
+  if (source.byteLength > 0 && inputPtr === 0) {
+    throw new Error("WebAssembly could not allocate memory for subtitle quality analysis.");
+  }
+
+  try {
+    new Uint8Array(wasm.memory.buffer, inputPtr, source.byteLength).set(source);
+    const payload = decodePackedJson<QualityPayload>(
+      wasm,
+      wasm.analyze_subtitle_quality(inputPtr, source.byteLength),
+    );
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    if (!payload.profile || payload.analyzedCueCount === undefined || !payload.diagnostics) {
+      throw new Error("Rust returned an incomplete subtitle quality report.");
+    }
+    return payload as SubtitleQualityReport;
+  } finally {
+    wasm.deallocate(inputPtr, source.byteLength);
   }
 }
 
