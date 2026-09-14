@@ -1,0 +1,133 @@
+.panel {
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.heading div {
+  display: grid;
+  gap: 4px;
+}
+
+.heading strong {
+  font-size: 0.95rem;
+}
+
+.heading small,
+.note {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.anchors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.anchor {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.anchor + .anchor {
+  border-left: 1px solid var(--border);
+}
+
+.anchorTitle {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--background);
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.note {
+  margin: 0;
+  max-width: 900px;
+  font-size: 0.78rem;
+}
+
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.actions button {
+  border: 1px solid var(--border-strong);
+  background: var(--text);
+  color: var(--background);
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+.actions button:first-child {
+  background: transparent;
+  color: var(--muted);
+}
+
+.actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 760px) {
+  .heading,
+  .footer {
+    flex-direction: column;
+  }
+
+  .anchors,
+  .fields {
+    grid-template-columns: 1fr;
+  }
+
+  .anchor + .anchor {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .actions {
+    width: 100%;
+  }
+}
