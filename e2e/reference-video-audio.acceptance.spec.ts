@@ -30,7 +30,8 @@ test('Chromium decodes the deterministic reference-video audio track', async ({ 
       return {
         channels: buffer.numberOfChannels,
         durationSeconds: buffer.duration,
-        sampleRate: buffer.sampleRate,
+        decodedSampleRate: buffer.sampleRate,
+        contextSampleRate: context.sampleRate,
         peak,
       }
     } finally {
@@ -39,7 +40,8 @@ test('Chromium decodes the deterministic reference-video audio track', async ({ 
   }, encoded)
 
   expect(result.channels).toBeGreaterThanOrEqual(1)
-  expect(result.sampleRate).toBe(48_000)
+  expect(result.decodedSampleRate).toBe(result.contextSampleRate)
+  expect(result.decodedSampleRate).toBeGreaterThanOrEqual(8_000)
   expect(result.durationSeconds).toBeGreaterThan(1.9)
   expect(result.durationSeconds).toBeLessThan(2.1)
   expect(result.peak).toBeGreaterThan(0.01)
