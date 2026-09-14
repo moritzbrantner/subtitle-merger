@@ -39,6 +39,30 @@ export type ParsedSubtitle = {
   warnings: string[];
 };
 
+export type SubtitleQualityProfile = {
+  name: string;
+  maxCharactersPerSecond: number;
+  maxCharactersPerLine: number;
+  maxLines: number;
+  minDurationMs: number;
+  maxDurationMs: number;
+  minGapMs: number;
+};
+
+export type SubtitleQualityDiagnostic = {
+  code: string;
+  severity: "warning";
+  cueIndex: number;
+  relatedCueIndex: number | null;
+  message: string;
+};
+
+export type SubtitleQualityReport = {
+  profile: SubtitleQualityProfile;
+  analyzedCueCount: number;
+  diagnostics: SubtitleQualityDiagnostic[];
+};
+
 export type Track = {
   id: string;
   title: string;
