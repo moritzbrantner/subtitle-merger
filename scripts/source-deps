@@ -25,7 +25,7 @@ bridge_source() {
   ln -s "$(cd "$source" && pwd)" "$target"
 }
 
-if [[ "$action" == "prepare" || "$action" == "activate" ]]; then
+if [[ "$action" == "prepare" || "$action" == "activate" || "$action" == "verify-graph" ]]; then
   bridge_source "editor-core" "${EDITOR_CORE_SOURCE:-}" "$root/../editor-core"
   bridge_source "timeline-editor" "${TIMELINE_EDITOR_SOURCE:-}" "$root/../timeline-editor"
 fi
