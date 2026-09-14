@@ -1,6 +1,31 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "cargo": {
-    "patches": []
+    "repositories": []
+  },
+  "javascript": {
+    "localOnly": true,
+    "repositories": [
+      {
+        "git": "https://github.com/moritzbrantner/editor-core.git",
+        "rev": "1a52e27ddacc5daa8b39713e9de8edd1c498c640",
+        "localPath": ".source/editor-core",
+        "packages": [
+          {
+            "package": "@moenarch/editor-core"
+          }
+        ]
+      },
+      {
+        "git": "https://github.com/moritzbrantner/timeline-editor.git",
+        "rev": "716eb6b5c4a66a18c57e5d0507fdfdcd3a3a89f5",
+        "localPath": ".source/timeline-editor",
+        "packages": [
+          {
+            "package": "@moritzbrantner/timeline-editor"
+          }
+        ]
+      }
+    ]
   }
 }
