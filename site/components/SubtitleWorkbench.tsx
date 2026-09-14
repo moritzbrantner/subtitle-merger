@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { CueTimelineBlock } from "./CueTimelineBlock";
+import { SubtitleQualityPanel } from "./SubtitleQualityPanel";
 import {
   recordAcceptedDocument,
   redoAcceptedDocument,
@@ -14,8 +15,14 @@ import {
   formatClock,
   inferTrackTitle,
 } from "../lib/subtitles";
-import type { Cue, Track, VideoInspection } from "../lib/types";
+import type {
+  Cue,
+  SubtitleQualityReport,
+  Track,
+  VideoInspection,
+} from "../lib/types";
 import {
+  analyzeSubtitleQuality,
   editSubtitleCue,
   inspectVideo,
   mergeSubtitleCues,
@@ -136,6 +143,7 @@ export function SubtitleWorkbench() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const inspectionAbortRef = useRef<AbortController | null>(null);
   const cueEditInFlightRef = useRef(false);
+  const qualityRequestRef = useRef(0);
   const cueTextRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
@@ -149,6 +157,9 @@ export function SubtitleWorkbench() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [qualityReport, setQualityReport] = useState<SubtitleQualityReport>();
+  const [qualityError, setQualityError] = useState("");
+  const [qualityBusy, setQualityBusy] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -185,6 +196,38 @@ export function SubtitleWorkbench() {
   const selectedTrackHasDrafts = selectedTrack
     ? Object.keys(cueDrafts).some((key) => key.startsWith(`${selectedTrack.id}:`))
     : false;
+
+  useEffect(() => {
+    const requestId = ++qualityRequestRef.current;
+    const source = selectedTrack?.sourceBytes;
+    setQualityReport(undefined);
+    setQualityError("");
+
+    if (!source) {
+      setQualityBusy(false);
+      return;
+    }
+
+    setQualityBusy(true);
+    void analyzeSubtitleQuality(source)
+      .then((report) => {
+        if (qualityRequestRef.current === requestId) {
+          setQualityReport(report);
+        }
+      })
+      .catch((cause) => {
+        if (qualityRequestRef.current === requestId) {
+          setQualityError(
+            cause instanceof Error ? cause.message : "Subtitle quality analysis failed.",
+          );
+        }
+      })
+      .finally(() => {
+        if (qualityRequestRef.current === requestId) {
+          setQualityBusy(false);
+        }
+      });
+  }, [selectedTrack?.id, selectedTrack?.sourceBytes]);
 
   const visibleCues = useMemo(
     () =>
@@ -724,6 +767,14 @@ export function SubtitleWorkbench() {
     video.currentTime = milliseconds / 1000;
   }
 
+  function selectQualityCue(cueIndex: number) {
+    const cue = selectedTrack?.cues[cueIndex];
+    if (!selectedTrack || !cue) {
+      return;
+    }
+    seek(shiftedTime(cue.startMs, selectedTrack.offsetMs));
+  }
+
   function downloadSourceTrack(track: Track) {
     if (!track.sourceBytes) {
       return;
@@ -1007,6 +1058,15 @@ export function SubtitleWorkbench() {
             />
             <small>Positive values delay this track; negative values move it earlier. Preview plus converted and merged exports use this offset; Download source preserves source-document timing.</small>
           </label>
+
+          <SubtitleQualityPanel
+            trackTitle={selectedTrack.title}
+            sourceAvailable={Boolean(selectedTrack.sourceBytes)}
+            report={qualityReport}
+            busy={qualityBusy}
+            error={qualityError}
+            onSelectCue={selectQualityCue}
+          />
 
           {selectedTrack.sourceBytes ? (
             <p className="merge-note">
