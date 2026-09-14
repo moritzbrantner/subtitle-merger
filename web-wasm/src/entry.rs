@@ -7,6 +7,8 @@ mod edit;
 mod source_rewrite;
 // Structural split/merge operations remain Rust-owned and fail closed on metadata loss.
 mod structure;
+// Deterministic read-only subtitle quality diagnostics stay Rust-owned and never rewrite source content.
+mod quality;
 // Deterministic track ordering, timing transforms, overlap handling, and merged serialization are Rust-owned.
 mod merge;
 mod range_inspection;
