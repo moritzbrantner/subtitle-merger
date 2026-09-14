@@ -97,7 +97,8 @@ fn quantize_nearest(milliseconds: i128, quantum_ms: u64) -> Result<i128, String>
         return Ok(milliseconds);
     }
     let quantum = i128::from(quantum_ms);
-    rounded_div(milliseconds, quantum)?.checked_mul(quantum)
+    rounded_div(milliseconds, quantum)?
+        .checked_mul(quantum)
         .ok_or_else(|| "Drift-correction arithmetic overflowed.".to_string())
 }
 
@@ -180,9 +181,8 @@ fn apply_drift_correction(source: &[u8], anchors: DriftAnchors) -> Result<String
         cue.end_ms = end_ms;
     }
 
-    let mut content = String::from_utf8(source.to_vec())
-        .map_err(|_| "Subtitle source contains invalid UTF-8 after decoding boundary.".to_string())?;
-    for cue_index in 0..document.cues.len() {
+    let mut content = serialize_edited_document(source, &document, 0)?;
+    for cue_index in 1..document.cues.len() {
         content = serialize_edited_document(content.as_bytes(), &document, cue_index)?;
     }
 
