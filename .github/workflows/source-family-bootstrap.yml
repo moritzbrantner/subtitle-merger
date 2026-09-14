@@ -1,0 +1,43 @@
+name: Source Family Bootstrap
+
+on:
+  push:
+    branches:
+      - fix/source-first-editor-family
+
+permissions:
+  contents: read
+
+jobs:
+  verify-source-family:
+    runs-on: ubuntu-latest
+    env:
+      EDITOR_CORE_SOURCE: ${{ github.workspace }}/.source/editor-core
+      TIMELINE_EDITOR_SOURCE: ${{ github.workspace }}/.source/timeline-editor
+    steps:
+      - name: Check out Subtitle Merger
+        uses: actions/checkout@v6
+      - name: Check out editor-core source
+        uses: actions/checkout@v6
+        with:
+          repository: moritzbrantner/editor-core
+          path: .source/editor-core
+      - name: Check out timeline-editor source
+        uses: actions/checkout@v6
+        with:
+          repository: moritzbrantner/timeline-editor
+          ref: fix/moenarch-source-first
+          path: .source/timeline-editor
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Prepare editor-family source
+        run: bun run source:prepare
+      - name: Smoke-test editor-family source
+        run: bun run source:smoke
+      - name: Verify frontend consumer
+        run: |
+          bun run --cwd frontend lint
+          bun run --cwd frontend test
+          bun run build:frontend
