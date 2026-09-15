@@ -179,7 +179,14 @@ function App() {
       const subtitles = await loadSubtitleAssets(load, metadata.durationMs)
       if (!isCurrentAttempt()) return
 
-      const nextReferenceAudio = await loadReferenceVideoAudio(load.video).catch(() => undefined)
+      let referenceAudioWarning: LoadWarning | undefined
+      const nextReferenceAudio = await loadReferenceVideoAudio(load.video).catch((error) => {
+        referenceAudioWarning = {
+          filename: load.video.filename,
+          message: error instanceof Error ? error.message : 'Reference video waveform is unavailable.',
+        }
+        return undefined
+      })
       if (!isCurrentAttempt()) return
 
       commitLoadedSession(
@@ -192,7 +199,9 @@ function App() {
         nextReferenceAudio,
       )
       setSelectedVideo(load.video)
-      setLoadWarnings(subtitles.warnings)
+      setLoadWarnings(
+        referenceAudioWarning ? [...subtitles.warnings, referenceAudioWarning] : subtitles.warnings,
+      )
       setLoadError(undefined)
       setGenerationMessage(undefined)
       setIsVideoPathDialogOpen(false)
