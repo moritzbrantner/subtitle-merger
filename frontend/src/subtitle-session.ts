@@ -55,12 +55,8 @@ function getTrackLabel(asset: SubtitleAsset, speakers: string[]): string {
 
 function createReferenceAudioTrack(
   referenceVideoDurationMs: number,
-  referenceAudio: ReferenceVideoAudio | undefined,
+  referenceAudio: ReferenceVideoAudio,
 ) {
-  if (!referenceAudio) {
-    return undefined
-  }
-
   const trackId = 'reference-audio'
 
   return {
@@ -87,6 +83,20 @@ function createReferenceAudioTrack(
           sampleRate: referenceAudio.sampleRate,
         },
       },
+    ],
+  }
+}
+
+export function attachReferenceAudio(
+  document: SubtitleDocument,
+  referenceVideoDurationMs: number,
+  referenceAudio: ReferenceVideoAudio,
+): SubtitleDocument {
+  return {
+    ...document,
+    tracks: [
+      createReferenceAudioTrack(referenceVideoDurationMs, referenceAudio),
+      ...document.tracks.filter((track) => track.id !== 'reference-audio'),
     ],
   }
 }
@@ -126,22 +136,23 @@ export function buildSubtitleSession(
       ],
     }
   })
-  const referenceAudioTrack = createReferenceAudioTrack(referenceVideoDurationMs, referenceAudio)
-  const tracks = referenceAudioTrack ? [referenceAudioTrack, ...subtitleTracks] : subtitleTracks
   const itemIds = subtitleTracks.flatMap((track) => track.items.map((item) => item.id))
   const trackIds = subtitleTracks.map((track) => track.id)
+  const baseDocument: SubtitleDocument = {
+    durationMs: Math.max(
+      referenceVideoDurationMs,
+      ...assets.map(getLastCueEndMs),
+      1_000,
+    ),
+    currentTimeMs: 0,
+    tracks: subtitleTracks,
+  }
 
   return {
     assets,
-    document: {
-      durationMs: Math.max(
-        referenceVideoDurationMs,
-        ...assets.map(getLastCueEndMs),
-        1_000,
-      ),
-      currentTimeMs: 0,
-      tracks,
-    },
+    document: referenceAudio
+      ? attachReferenceAudio(baseDocument, referenceVideoDurationMs, referenceAudio)
+      : baseDocument,
     selection: {
       itemIds,
       anchorItemId: itemIds[0],
