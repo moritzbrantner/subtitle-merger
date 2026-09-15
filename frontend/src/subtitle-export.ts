@@ -1,3 +1,4 @@
+import type { TimelineTextItemData, TimelineTextCue } from '@moritzbrantner/timeline-editor/text'
 import type { SubtitleDocument } from './subtitle-session'
 
 export type SubtitleExportFormat = 'srt' | 'webvtt'
@@ -6,6 +7,11 @@ export type SubtitleExport = {
   filename: string
   mimeType: string
   text: string
+}
+
+type SubtitleTimelineItem = SubtitleDocument['tracks'][number]['items'][number]
+type EditableSubtitleItem = SubtitleTimelineItem & {
+  data: TimelineTextItemData & { cues: TimelineTextCue[] }
 }
 
 type ExportCue = {
@@ -23,6 +29,10 @@ type EditableSubtitleTrack = {
   cues: ExportCue[]
 }
 
+function isEditableSubtitleItem(candidate: SubtitleTimelineItem): candidate is EditableSubtitleItem {
+  return candidate.data?.mediaType === 'text' && Array.isArray(candidate.data.cues)
+}
+
 function subtitleData(document: SubtitleDocument, trackId: string): EditableSubtitleTrack {
   const track = document.tracks.find((candidate) => candidate.id === trackId)
 
@@ -30,9 +40,7 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
     throw new Error(`Subtitle track ${trackId} does not exist.`)
   }
 
-  const items = track.items.filter(
-    (candidate) => candidate.data?.mediaType === 'text' && Array.isArray(candidate.data.cues),
-  )
+  const items = track.items.filter(isEditableSubtitleItem)
 
   if (items.length === 0) {
     throw new Error(`Subtitle track ${trackId} has no editable cues.`)
@@ -41,7 +49,7 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
   const cues = items.flatMap((item, itemIndex) => {
     const placementMs = item.startMs ?? 0
 
-    return (item.data?.cues ?? []).map((cue, cueIndex) => ({
+    return item.data.cues.map((cue, cueIndex) => ({
       startMs: placementMs + cue.startMs,
       endMs: placementMs + cue.endMs,
       text: cue.text,
@@ -54,7 +62,7 @@ function subtitleData(document: SubtitleDocument, trackId: string): EditableSubt
   return {
     id: track.id,
     label: typeof exportLabel === 'string' && exportLabel.trim() ? exportLabel : track.label,
-    language: items.find((item) => item.data?.language)?.data?.language,
+    language: items.find((item) => item.data.language)?.data.language,
     cues,
   }
 }
@@ -133,9 +141,7 @@ export function listEditableSubtitleTracks(
   document: SubtitleDocument,
 ): Array<{ id: string; label: string; language?: string }> {
   return document.tracks.flatMap((track) => {
-    const items = track.items.filter(
-      (candidate) => candidate.data?.mediaType === 'text' && Array.isArray(candidate.data.cues),
-    )
+    const items = track.items.filter(isEditableSubtitleItem)
 
     if (items.length === 0) {
       return []
@@ -145,7 +151,7 @@ export function listEditableSubtitleTracks(
       {
         id: track.id,
         label: track.label,
-        language: items.find((item) => item.data?.language)?.data?.language,
+        language: items.find((item) => item.data.language)?.data.language,
       },
     ]
   })
