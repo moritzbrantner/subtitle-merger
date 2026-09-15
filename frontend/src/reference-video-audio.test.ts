@@ -7,6 +7,8 @@ const source = {
   mimeType: 'video/webm',
 }
 
+type MetadataOptions = { sampleCount?: number; normalize?: boolean }
+
 describe('loadReferenceVideoAudio', () => {
   it('delegates decoding and waveform generation to timeline-editor/audio', async () => {
     const fetcher = vi.fn(async () =>
@@ -15,7 +17,7 @@ describe('loadReferenceVideoAudio', () => {
         headers: { 'content-type': 'video/webm' },
       }),
     )
-    const metadataLoader = vi.fn(async () => ({
+    const metadataLoader = vi.fn(async (_file: File, _options?: MetadataOptions) => ({
       waveform: [0, 0.5, 1],
       channels: 2,
       sampleRate: 48_000,
@@ -39,7 +41,7 @@ describe('loadReferenceVideoAudio', () => {
 
   it('fails closed when the shared audio contract cannot produce a waveform', async () => {
     const fetcher = vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 }))
-    const metadataLoader = vi.fn(async () => ({ channels: 1 }))
+    const metadataLoader = vi.fn(async (_file: File, _options?: MetadataOptions) => ({ channels: 1 }))
 
     await expect(
       loadReferenceVideoAudio(source, { fetcher, metadataLoader }),
@@ -48,7 +50,7 @@ describe('loadReferenceVideoAudio', () => {
 
   it('does not invoke shared decoding when the media transport fails', async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 503 }))
-    const metadataLoader = vi.fn(async () => ({ waveform: [1] }))
+    const metadataLoader = vi.fn(async (_file: File, _options?: MetadataOptions) => ({ waveform: [1] }))
 
     await expect(
       loadReferenceVideoAudio(source, { fetcher, metadataLoader }),
@@ -62,7 +64,7 @@ describe('loadReferenceVideoAudio', () => {
       expect(init?.signal).toBe(controller.signal)
       return new Response(new Uint8Array([1]), { status: 200 })
     })
-    const metadataLoader = vi.fn(async () => ({ waveform: [0] }))
+    const metadataLoader = vi.fn(async (_file: File, _options?: MetadataOptions) => ({ waveform: [0] }))
 
     await loadReferenceVideoAudio(source, {
       fetcher,
