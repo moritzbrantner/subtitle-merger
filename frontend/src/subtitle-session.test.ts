@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSubtitleSession, type SubtitleAsset } from './subtitle-session'
+import { attachReferenceAudio, buildSubtitleSession, type SubtitleAsset } from './subtitle-session'
 
 function subtitleAsset(
   id: string,
@@ -77,6 +77,41 @@ describe('buildSubtitleSession', () => {
     })
     expect(session.selection.itemIds).toEqual(['en-item'])
     expect(session.selection.trackIds).toEqual(['subtitle-en'])
+  })
+
+  it('attaches a late waveform without rebuilding live subtitle state', () => {
+    const session = buildSubtitleSession(90_000, [subtitleAsset('en', 'English', 10_000)])
+    const subtitleTrack = session.document.tracks[0]!
+    const subtitleItem = subtitleTrack.items[0]!
+
+    subtitleItem.startMs = 750
+    session.document.currentTimeMs = 4_200
+    if (subtitleItem.data?.mediaType === 'text') {
+      subtitleItem.data.cues![0]!.text = 'Edited while waveform loaded'
+    }
+
+    const withAudio = attachReferenceAudio(session.document, 90_000, {
+      label: 'movie.webm',
+      waveform: [0, 1, 0.5],
+      channels: 1,
+      sampleRate: 48_000,
+    })
+
+    expect(withAudio.currentTimeMs).toBe(4_200)
+    expect(withAudio.tracks[1]).toBe(subtitleTrack)
+    expect(withAudio.tracks[1]?.items[0]?.startMs).toBe(750)
+    expect(
+      withAudio.tracks[1]?.items[0]?.data?.mediaType === 'text'
+        ? withAudio.tracks[1].items[0].data.cues?.[0]?.text
+        : undefined,
+    ).toBe('Edited while waveform loaded')
+
+    const replacedAudio = attachReferenceAudio(withAudio, 90_000, {
+      label: 'movie.webm',
+      waveform: [1, 0],
+    })
+    expect(replacedAudio.tracks.filter((track) => track.id === 'reference-audio')).toHaveLength(1)
+    expect(replacedAudio.tracks[1]).toBe(subtitleTrack)
   })
 
   it('makes one item span the complete cue sequence rather than the Reference Video', () => {
