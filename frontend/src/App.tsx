@@ -25,6 +25,7 @@ import {
 } from './generation/client'
 import { type GeneratedTrack, type SubtitleJob, type SubtitleJobUpdate } from './generation/types'
 import {
+  attachReferenceAudio,
   buildSubtitleSession,
   createEmptySubtitleDocument,
   type SubtitleAsset,
@@ -101,7 +102,6 @@ function App() {
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
   const [assets, setAssets] = useState<SubtitleAsset[]>([])
   const [referenceVideo, setReferenceVideo] = useState<ReferenceVideo>()
-  const [referenceAudio, setReferenceAudio] = useState<ReferenceVideoAudio>()
   const [transportState, setTransportState] = useState(defaultTransportState)
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
@@ -117,6 +117,7 @@ function App() {
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
   const videoLoadAttemptRef = useRef(0)
+  const referenceAudioRef = useRef<ReferenceVideoAudio>()
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -130,15 +131,11 @@ function App() {
 
   useEffect(() => applyAppearance(appearance), [appearance])
 
-  function commitLoadedSession(
-    video: ReferenceVideo,
-    nextAssets: SubtitleAsset[],
-    nextReferenceAudio?: ReferenceVideoAudio,
-  ) {
-    const session = buildSubtitleSession(video.durationMs, nextAssets, nextReferenceAudio)
+  function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
+    const session = buildSubtitleSession(video.durationMs, nextAssets)
 
+    referenceAudioRef.current = undefined
     setReferenceVideo(video)
-    setReferenceAudio(nextReferenceAudio)
     setAssets(session.assets)
     setDocument(session.document)
     setSelection(session.selection)
@@ -179,16 +176,6 @@ function App() {
       const subtitles = await loadSubtitleAssets(load, metadata.durationMs)
       if (!isCurrentAttempt()) return
 
-      let referenceAudioWarning: LoadWarning | undefined
-      const nextReferenceAudio = await loadReferenceVideoAudio(load.video).catch((error) => {
-        referenceAudioWarning = {
-          filename: load.video.filename,
-          message: error instanceof Error ? error.message : 'Reference video waveform is unavailable.',
-        }
-        return undefined
-      })
-      if (!isCurrentAttempt()) return
-
       commitLoadedSession(
         {
           filename: load.video.filename,
@@ -196,15 +183,34 @@ function App() {
           durationMs: metadata.durationMs,
         },
         subtitles.assets,
-        nextReferenceAudio,
       )
       setSelectedVideo(load.video)
-      setLoadWarnings(
-        referenceAudioWarning ? [...subtitles.warnings, referenceAudioWarning] : subtitles.warnings,
-      )
+      setLoadWarnings(subtitles.warnings)
       setLoadError(undefined)
       setGenerationMessage(undefined)
       setIsVideoPathDialogOpen(false)
+
+      void loadReferenceVideoAudio(load.video)
+        .then((referenceAudio) => {
+          if (!isCurrentAttempt()) return
+
+          referenceAudioRef.current = referenceAudio
+          setDocument((current) =>
+            attachReferenceAudio(current, metadata.durationMs, referenceAudio),
+          )
+        })
+        .catch((error) => {
+          if (!isCurrentAttempt()) return
+
+          setLoadWarnings((current) => [
+            ...current,
+            {
+              filename: load.video.filename,
+              message:
+                error instanceof Error ? error.message : 'Reference video waveform is unavailable.',
+            },
+          ])
+        })
     } catch (error) {
       if (isCurrentAttempt()) {
         setVideoPathError(error instanceof Error ? error.message : messages.videoLoadFailed)
@@ -275,7 +281,7 @@ function App() {
     const session = buildSubtitleSession(
       referenceVideo.durationMs,
       [...assets, ...generatedAssets],
-      referenceAudio,
+      referenceAudioRef.current,
     )
     setAssets(session.assets)
     setDocument(session.document)
