@@ -66,9 +66,13 @@ test('loads a Reference Video by absolute path with an observable loading state'
   await expect(dialog).toHaveCount(0)
   const timelineCanvas = page.locator("[data-slot='timeline-workbench-canvas']")
   const referenceVideo = page.getByTestId('reference-video')
+  const referenceAudioClip = timelineCanvas.locator(
+    `[data-slot="timeline-editor-clip"][aria-label="${fixtureFilename}"]`,
+  )
   await expect(referenceVideo).toBeVisible()
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
-  await expect(timelineCanvas.getByRole('button', { name: fixtureFilename, exact: true })).toHaveCount(0)
+  await expect(referenceAudioClip).toBeVisible()
+  await expect(referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform"]')).toBeVisible()
   await expect(page.locator("[data-slot='timeline-workbench-assets']")).toHaveCount(0)
   await expect(page.getByRole('status')).toContainText('No subtitle tracks yet')
 
