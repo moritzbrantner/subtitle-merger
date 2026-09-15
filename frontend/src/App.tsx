@@ -117,7 +117,7 @@ function App() {
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
   const videoLoadAttemptRef = useRef(0)
-  const referenceAudioRef = useRef<ReferenceVideoAudio>()
+  const referenceAudioRef = useRef<ReferenceVideoAudio | undefined>(undefined)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
