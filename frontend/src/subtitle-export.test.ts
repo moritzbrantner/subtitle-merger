@@ -1,6 +1,21 @@
+import type { TimelineTextItemData, TimelineTextCue } from '@moritzbrantner/timeline-editor/text'
 import { describe, expect, it } from 'vitest'
-import { buildSubtitleSession, type SubtitleAsset } from './subtitle-session'
+import {
+  buildSubtitleSession,
+  type SubtitleAsset,
+  type TimelineItemData,
+} from './subtitle-session'
 import { exportSubtitleTrack, listEditableSubtitleTracks } from './subtitle-export'
+
+type EditableTextData = TimelineTextItemData & { cues: TimelineTextCue[] }
+
+function editableTextData(data: TimelineItemData | undefined): EditableTextData {
+  if (data?.mediaType !== 'text' || !Array.isArray(data.cues)) {
+    throw new Error('Expected editable text timeline data.')
+  }
+
+  return data as EditableTextData
+}
 
 function session() {
   const asset: SubtitleAsset = {
@@ -47,12 +62,8 @@ function speakerSession() {
 describe('subtitle export', () => {
   it('serializes the edited timeline state instead of the original source text', () => {
     const current = session()
-    const data = current.document.tracks[0]?.items[0]?.data
-    const cues = data?.cues
-
-    expect(cues).toBeDefined()
-    if (!cues) return
-    cues[1]!.text = 'Edited subtitle'
+    const data = editableTextData(current.document.tracks[0]?.items[0]?.data)
+    data.cues[1]!.text = 'Edited subtitle'
 
     const exported = exportSubtitleTrack(current.document, 'subtitle-generated-de', 'srt')
 
@@ -68,8 +79,10 @@ describe('subtitle export', () => {
     const track = current.document.tracks[0]
     const firstItem = track?.items[0]
 
-    expect(firstItem?.data?.cues).toBeDefined()
-    if (!track || !firstItem?.data?.cues) return
+    expect(track).toBeDefined()
+    expect(firstItem).toBeDefined()
+    if (!track || !firstItem) return
+    const firstData = editableTextData(firstItem.data)
 
     firstItem.startMs = 1_000
     track.items.push({
@@ -77,7 +90,7 @@ describe('subtitle export', () => {
       id: 'copied-item',
       startMs: 5_000,
       data: {
-        ...firstItem.data,
+        ...firstData,
         cues: [{ id: 'copied-cue', startMs: 0, endMs: 500, text: 'Copied subtitle' }],
       },
     })
@@ -118,17 +131,19 @@ describe('subtitle export', () => {
     const track = current.document.tracks[0]
     const firstItem = track?.items[0]
 
-    expect(firstItem?.data?.cues).toBeDefined()
-    if (!track || !firstItem?.data?.cues) return
+    expect(track).toBeDefined()
+    expect(firstItem).toBeDefined()
+    if (!track || !firstItem) return
+    const firstData = editableTextData(firstItem.data)
 
     firstItem.startMs = 1_000
-    firstItem.data.cues[0]!.text = 'Edited hello'
+    firstData.cues[0]!.text = 'Edited hello'
     track.items.push({
       ...firstItem,
       id: 'speaker-copy',
       startMs: 5_000,
       data: {
-        ...firstItem.data,
+        ...firstData,
         cues: [
           {
             id: 'speaker-copy-cue',
@@ -163,10 +178,16 @@ describe('subtitle export', () => {
     )
   })
 
-  it('lists editable tracks with their language', () => {
+  it('lists only editable subtitle tracks when a reference-audio lane exists', () => {
     const current = session()
+    const withAudio = buildSubtitleSession(5_000, current.assets, {
+      label: 'movie.webm',
+      waveform: [0, 1, 0.5],
+      channels: 1,
+      sampleRate: 48_000,
+    })
 
-    expect(listEditableSubtitleTracks(current.document)).toEqual([
+    expect(listEditableSubtitleTracks(withAudio.document)).toEqual([
       { id: 'subtitle-generated-de', label: 'Translation', language: 'de' },
     ])
   })
