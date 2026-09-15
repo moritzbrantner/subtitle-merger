@@ -13,6 +13,10 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: [
       {
+        find: '@moritzbrantner/timeline-editor/audio',
+        replacement: `${timelineEditorSource}audio.ts`,
+      },
+      {
         find: '@moritzbrantner/timeline-editor/text',
         replacement: `${timelineEditorSource}text.ts`,
       },
@@ -23,7 +27,11 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['@moritzbrantner/timeline-editor', '@moritzbrantner/timeline-editor/text'],
+    exclude: [
+      '@moritzbrantner/timeline-editor',
+      '@moritzbrantner/timeline-editor/audio',
+      '@moritzbrantner/timeline-editor/text',
+    ],
   },
   server: {
     proxy: {

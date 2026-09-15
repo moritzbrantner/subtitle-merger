@@ -14,6 +14,9 @@
       "@moritzbrantner/timeline-editor": [
         "../node_modules/@moritzbrantner/timeline-editor/src/index.ts"
       ],
+      "@moritzbrantner/timeline-editor/audio": [
+        "../node_modules/@moritzbrantner/timeline-editor/src/audio.ts"
+      ],
       "@moritzbrantner/timeline-editor/text": [
         "../node_modules/@moritzbrantner/timeline-editor/src/text.ts"
       ]

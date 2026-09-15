@@ -9,10 +9,8 @@ import {
   type TimelineEditorViewport,
   type TimelineWorkbenchTransportState,
 } from '@moritzbrantner/timeline-editor'
-import {
-  createTimelineTextExtension,
-  type TimelineTextItemData,
-} from '@moritzbrantner/timeline-editor/text'
+import { createTimelineAudioExtension } from '@moritzbrantner/timeline-editor/audio'
+import { createTimelineTextExtension } from '@moritzbrantner/timeline-editor/text'
 import { SubtitleExportDialog } from './SubtitleExportDialog'
 import { VideoPathDialog } from './VideoPathDialog'
 import { AppHeader } from './app/AppHeader'
@@ -27,19 +25,25 @@ import {
 } from './generation/client'
 import { type GeneratedTrack, type SubtitleJob, type SubtitleJobUpdate } from './generation/types'
 import {
+  attachReferenceAudio,
   buildSubtitleSession,
   createEmptySubtitleDocument,
   type SubtitleAsset,
   type SubtitleDocument,
+  type TimelineItemData,
 } from './subtitle-session'
+import {
+  loadReferenceVideoAudio,
+  type ReferenceVideoAudio,
+} from './reference-video-audio'
 import { loadSubtitleAssets, requestVideoLoad, type LoadedVideo, type LoadWarning } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
 import { applyAppearance, getPreferredAppearance, type Appearance } from './appearance'
 import { getMessages, getPreferredLocale, persistLocale, type Locale } from './localization'
 import './App.css'
 
-type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineTextItemData>
-type EditorExtension = TimelineEditorExtension<TimelineTextItemData>
+type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineItemData>
+type EditorExtension = TimelineEditorExtension<TimelineItemData>
 
 const defaultTransportState: TimelineWorkbenchTransportState = {
   status: 'paused',
@@ -87,10 +91,14 @@ function App() {
     () => createTimelineTextExtension() as unknown as EditorExtension,
     [],
   )
+  const audioExtension = useMemo(
+    () => createTimelineAudioExtension() as unknown as EditorExtension,
+    [],
+  )
   const [document, setDocument] = useState<SubtitleDocument>(() => createEmptySubtitleDocument())
   const [selection, setSelection] = useState<TimelineEditorSelection>({ itemIds: [], trackIds: [] })
   const [viewport, setViewport] = useState<TimelineEditorViewport>({ pixelsPerSecond: 80 })
-  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineTextItemData>>()
+  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineItemData>>()
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
   const [assets, setAssets] = useState<SubtitleAsset[]>([])
   const [referenceVideo, setReferenceVideo] = useState<ReferenceVideo>()
@@ -109,6 +117,7 @@ function App() {
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
   const videoLoadAttemptRef = useRef(0)
+  const referenceAudioRef = useRef<ReferenceVideoAudio | undefined>(undefined)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -125,6 +134,7 @@ function App() {
   function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
     const session = buildSubtitleSession(video.durationMs, nextAssets)
 
+    referenceAudioRef.current = undefined
     setReferenceVideo(video)
     setAssets(session.assets)
     setDocument(session.document)
@@ -179,6 +189,28 @@ function App() {
       setLoadError(undefined)
       setGenerationMessage(undefined)
       setIsVideoPathDialogOpen(false)
+
+      void loadReferenceVideoAudio(load.video)
+        .then((referenceAudio) => {
+          if (!isCurrentAttempt()) return
+
+          referenceAudioRef.current = referenceAudio
+          setDocument((current) =>
+            attachReferenceAudio(current, metadata.durationMs, referenceAudio),
+          )
+        })
+        .catch((error) => {
+          if (!isCurrentAttempt()) return
+
+          setLoadWarnings((current) => [
+            ...current,
+            {
+              filename: load.video.filename,
+              message:
+                error instanceof Error ? error.message : 'Reference video waveform is unavailable.',
+            },
+          ])
+        })
     } catch (error) {
       if (isCurrentAttempt()) {
         setVideoPathError(error instanceof Error ? error.message : messages.videoLoadFailed)
@@ -246,7 +278,11 @@ function App() {
       durationMs: Math.max(referenceVideo.durationMs, ...track.cues.map((cue) => cue.endMs)),
       data: { mediaType: 'text' as const, format: 'webvtt' as const, language: track.language, cues: track.cues },
     }))
-    const session = buildSubtitleSession(referenceVideo.durationMs, [...assets, ...generatedAssets])
+    const session = buildSubtitleSession(
+      referenceVideo.durationMs,
+      [...assets, ...generatedAssets],
+      referenceAudioRef.current,
+    )
     setAssets(session.assets)
     setDocument(session.document)
     setSelection(session.selection)
@@ -309,7 +345,7 @@ function App() {
             clipboard={clipboard}
             history={history}
             assets={assets}
-            extensions={[textExtension]}
+            extensions={[audioExtension, textExtension]}
             showAssetsPanel={false}
             showPreviewPanel={false}
             transportState={transportState}

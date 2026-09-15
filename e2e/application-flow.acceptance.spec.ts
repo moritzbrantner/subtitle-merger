@@ -156,6 +156,17 @@ test('opens, generates, edits and exports subtitles through the application shel
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Generate subtitles' })).toBeVisible()
 
+  const referenceAudioClip = page.locator(
+    `[data-slot="timeline-editor-clip"][aria-label="${fixtureFilename}"]`,
+  )
+  await expect(referenceAudioClip).toBeVisible()
+  await expect(
+    referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform"]'),
+  ).toBeVisible()
+  await expect(
+    referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform-bar"]').first(),
+  ).toBeVisible()
+
   await page.getByRole('button', { name: 'Generate subtitles', exact: true }).click()
 
   const subtitleClip = page.locator('[data-slot="timeline-editor-clip"][role="button"][aria-label="Subtitles — EN"]')
@@ -164,8 +175,10 @@ test('opens, generates, edits and exports subtitles through the application shel
   await timeline.focus()
   await timeline.press('Delete')
   await expect(subtitleClip).toHaveCount(0)
+  await expect(referenceAudioClip).toBeVisible()
   await timeline.press('Control+z')
   await expect(subtitleClip).toBeVisible()
+  await expect(referenceAudioClip).toBeVisible()
 
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
