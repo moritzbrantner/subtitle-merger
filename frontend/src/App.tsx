@@ -10,10 +10,7 @@ import {
   type TimelineWorkbenchTransportState,
 } from '@moritzbrantner/timeline-editor'
 import { createTimelineAudioExtension } from '@moritzbrantner/timeline-editor/audio'
-import {
-  createTimelineTextExtension,
-  type TimelineTextItemData,
-} from '@moritzbrantner/timeline-editor/text'
+import { createTimelineTextExtension } from '@moritzbrantner/timeline-editor/text'
 import { SubtitleExportDialog } from './SubtitleExportDialog'
 import { VideoPathDialog } from './VideoPathDialog'
 import { AppHeader } from './app/AppHeader'
