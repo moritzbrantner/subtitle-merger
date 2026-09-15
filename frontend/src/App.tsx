@@ -9,6 +9,7 @@ import {
   type TimelineEditorViewport,
   type TimelineWorkbenchTransportState,
 } from '@moritzbrantner/timeline-editor'
+import { createTimelineAudioExtension } from '@moritzbrantner/timeline-editor/audio'
 import {
   createTimelineTextExtension,
   type TimelineTextItemData,
@@ -31,15 +32,20 @@ import {
   createEmptySubtitleDocument,
   type SubtitleAsset,
   type SubtitleDocument,
+  type TimelineItemData,
 } from './subtitle-session'
+import {
+  loadReferenceVideoAudio,
+  type ReferenceVideoAudio,
+} from './reference-video-audio'
 import { loadSubtitleAssets, requestVideoLoad, type LoadedVideo, type LoadWarning } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
 import { applyAppearance, getPreferredAppearance, type Appearance } from './appearance'
 import { getMessages, getPreferredLocale, persistLocale, type Locale } from './localization'
 import './App.css'
 
-type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineTextItemData>
-type EditorExtension = TimelineEditorExtension<TimelineTextItemData>
+type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineItemData>
+type EditorExtension = TimelineEditorExtension<TimelineItemData>
 
 const defaultTransportState: TimelineWorkbenchTransportState = {
   status: 'paused',
@@ -87,13 +93,18 @@ function App() {
     () => createTimelineTextExtension() as unknown as EditorExtension,
     [],
   )
+  const audioExtension = useMemo(
+    () => createTimelineAudioExtension() as unknown as EditorExtension,
+    [],
+  )
   const [document, setDocument] = useState<SubtitleDocument>(() => createEmptySubtitleDocument())
   const [selection, setSelection] = useState<TimelineEditorSelection>({ itemIds: [], trackIds: [] })
   const [viewport, setViewport] = useState<TimelineEditorViewport>({ pixelsPerSecond: 80 })
-  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineTextItemData>>()
+  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineItemData>>()
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
   const [assets, setAssets] = useState<SubtitleAsset[]>([])
   const [referenceVideo, setReferenceVideo] = useState<ReferenceVideo>()
+  const [referenceAudio, setReferenceAudio] = useState<ReferenceVideoAudio>()
   const [transportState, setTransportState] = useState(defaultTransportState)
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
@@ -122,10 +133,15 @@ function App() {
 
   useEffect(() => applyAppearance(appearance), [appearance])
 
-  function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
-    const session = buildSubtitleSession(video.durationMs, nextAssets)
+  function commitLoadedSession(
+    video: ReferenceVideo,
+    nextAssets: SubtitleAsset[],
+    nextReferenceAudio?: ReferenceVideoAudio,
+  ) {
+    const session = buildSubtitleSession(video.durationMs, nextAssets, nextReferenceAudio)
 
     setReferenceVideo(video)
+    setReferenceAudio(nextReferenceAudio)
     setAssets(session.assets)
     setDocument(session.document)
     setSelection(session.selection)
@@ -166,6 +182,9 @@ function App() {
       const subtitles = await loadSubtitleAssets(load, metadata.durationMs)
       if (!isCurrentAttempt()) return
 
+      const nextReferenceAudio = await loadReferenceVideoAudio(load.video).catch(() => undefined)
+      if (!isCurrentAttempt()) return
+
       commitLoadedSession(
         {
           filename: load.video.filename,
@@ -173,6 +192,7 @@ function App() {
           durationMs: metadata.durationMs,
         },
         subtitles.assets,
+        nextReferenceAudio,
       )
       setSelectedVideo(load.video)
       setLoadWarnings(subtitles.warnings)
@@ -246,7 +266,11 @@ function App() {
       durationMs: Math.max(referenceVideo.durationMs, ...track.cues.map((cue) => cue.endMs)),
       data: { mediaType: 'text' as const, format: 'webvtt' as const, language: track.language, cues: track.cues },
     }))
-    const session = buildSubtitleSession(referenceVideo.durationMs, [...assets, ...generatedAssets])
+    const session = buildSubtitleSession(
+      referenceVideo.durationMs,
+      [...assets, ...generatedAssets],
+      referenceAudio,
+    )
     setAssets(session.assets)
     setDocument(session.document)
     setSelection(session.selection)
@@ -309,7 +333,7 @@ function App() {
             clipboard={clipboard}
             history={history}
             assets={assets}
-            extensions={[textExtension]}
+            extensions={[audioExtension, textExtension]}
             showAssetsPanel={false}
             showPreviewPanel={false}
             transportState={transportState}
