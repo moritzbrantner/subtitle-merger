@@ -46,6 +46,16 @@ describe('loadReferenceVideoAudio', () => {
     ).rejects.toThrow('Reference video audio could not be decoded.')
   })
 
+  it('does not invoke shared decoding when the media transport fails', async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 503 }))
+    const metadataLoader = vi.fn(async () => ({ waveform: [1] }))
+
+    await expect(
+      loadReferenceVideoAudio(source, { fetcher, metadataLoader }),
+    ).rejects.toThrow('Reference video audio could not be read (503).')
+    expect(metadataLoader).not.toHaveBeenCalled()
+  })
+
   it('forwards cancellation to the media fetch without inventing decoder cancellation', async () => {
     const controller = new AbortController()
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
