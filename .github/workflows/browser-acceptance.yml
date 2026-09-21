@@ -54,12 +54,22 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
       - name: Run deterministic browser acceptance
+        env:
+          CAPTURE_UI_SCREENSHOT: "1"
         run: bun run test:acceptance
       - name: Run focused video path browser tests
         run: bun run test:e2e:video-load
       - name: Report active source revisions
         if: always()
         run: bun run source:status
+      - name: Upload UI consumer screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a # v7
+        with:
+          name: ui-consumer-convergence
+          path: .artifacts/ui-consumer-convergence.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
