@@ -25,6 +25,9 @@ jobs:
         run: |
           bun install
           git diff -- bun.lock
+          echo "LOCKFILE_SNAPSHOT_BEGIN"
+          cat bun.lock
+          echo "LOCKFILE_SNAPSHOT_END"
       - name: Check application
         run: bun run check
       - name: Verify Cargo lockfile is current
