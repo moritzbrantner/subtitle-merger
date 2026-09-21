@@ -1,5 +1,5 @@
 import { expect, test, type ConsoleMessage, type Response } from '@playwright/test'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { loadVideoByPath } from './video-path'
 
@@ -184,6 +184,14 @@ test('opens, generates, edits and exports subtitles through the application shel
   await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Track' })).toHaveValue(/subtitle-/)
+
+  if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
+    await mkdir('.artifacts', { recursive: true })
+    await page.screenshot({
+      path: '.artifacts/ui-consumer-convergence.png',
+      fullPage: true,
+    })
+  }
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export', exact: true }).click()

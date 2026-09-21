@@ -1,4 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Button } from '@moritzbrantner/ui/components/stable/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@moritzbrantner/ui/components/stable/dialog'
+import { Input } from '@moritzbrantner/ui/components/stable/input'
+import { Label } from '@moritzbrantner/ui/components/stable/label'
 import type { AppMessages } from './localization'
 import './VideoPathDialog.css'
 
@@ -12,12 +24,15 @@ type VideoPathDialogProps = {
   onLoad: (path: string) => void
 }
 
-const focusableSelector = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ')
+function restoreFileMenuFocus(event: Event) {
+  const fileButton = window.document.querySelector<HTMLElement>(
+    'button[aria-controls="file-menu"]',
+  )
+  if (!fileButton) return
+
+  event.preventDefault()
+  fileButton.focus()
+}
 
 export function VideoPathDialog({
   open,
@@ -30,15 +45,8 @@ export function VideoPathDialog({
 }: VideoPathDialogProps) {
   const [path, setPath] = useState('')
   const [validationError, setValidationError] = useState<string>()
-  const overlayRef = useRef<HTMLDivElement>(null)
-  const dialogRef = useRef<HTMLElement>(null)
   const pathInputRef = useRef<HTMLInputElement>(null)
   const wasOpenRef = useRef(false)
-  const onCloseRef = useRef(onClose)
-
-  useEffect(() => {
-    onCloseRef.current = onClose
-  }, [onClose])
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current
@@ -51,84 +59,6 @@ export function VideoPathDialog({
     setPath('')
     setValidationError(undefined)
   }, [open])
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    const activeElement = window.document.activeElement
-    const previousFocus =
-      activeElement instanceof HTMLElement && activeElement !== window.document.body
-        ? activeElement
-        : null
-    const overlay = overlayRef.current
-    const siblings = overlay?.parentElement
-      ? Array.from(overlay.parentElement.children).filter((element) => element !== overlay)
-      : []
-    const previousInert = siblings.map((element) => [element, (element as HTMLElement).inert] as const)
-
-    for (const element of siblings) {
-      ;(element as HTMLElement).inert = true
-    }
-
-    const focusFrame = window.requestAnimationFrame(() => pathInputRef.current?.focus())
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onCloseRef.current()
-        return
-      }
-
-      if (event.key !== 'Tab') {
-        return
-      }
-
-      const controls = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      )
-
-      if (controls.length === 0) {
-        event.preventDefault()
-        return
-      }
-
-      const first = controls[0]!
-      const last = controls.at(-1)!
-      const active = window.document.activeElement
-
-      if (!dialogRef.current?.contains(active)) {
-        event.preventDefault()
-        first.focus()
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame)
-      window.removeEventListener('keydown', handleKeyDown)
-      for (const [element, inert] of previousInert) {
-        ;(element as HTMLElement).inert = inert
-      }
-
-      const restoreTarget = previousFocus?.isConnected
-        ? previousFocus
-        : window.document.querySelector<HTMLElement>('button[aria-controls="file-menu"]')
-      restoreTarget?.focus()
-    }
-  }, [open])
-
-  if (!open) {
-    return null
-  }
 
   const displayedError = validationError ?? error
 
@@ -146,46 +76,49 @@ export function VideoPathDialog({
   }
 
   return (
-    <div
-      ref={overlayRef}
-      className="video-path-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose()
-        }
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
       }}
     >
-      <section
-        ref={dialogRef}
+      <DialogContent
         className="video-path-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="video-path-heading"
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          pathInputRef.current?.focus()
+        }}
+        onCloseAutoFocus={restoreFileMenuFocus}
       >
-        <div className="video-path-heading">
+        <DialogHeader className="video-path-heading">
           <div>
             <p className="eyebrow">{messages.openVideoEyebrow}</p>
-            <h2 id="video-path-heading">{messages.openVideoHeading}</h2>
+            <DialogTitle>{messages.openVideoHeading}</DialogTitle>
           </div>
-          <button
-            className="video-path-close"
-            type="button"
-            aria-label={messages.closeVideoDialog}
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
+          <DialogClose asChild>
+            <Button
+              className="video-path-close"
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              aria-label={messages.closeVideoDialog}
+            >
+              ×
+            </Button>
+          </DialogClose>
+        </DialogHeader>
 
         <form className="video-path-form" onSubmit={submitPath}>
-          <label>
-            <span>{messages.videoPathLabel}</span>
-            <input
+          <div className="video-path-field">
+            <Label htmlFor="video-path-input">{messages.videoPathLabel}</Label>
+            <Input
               ref={pathInputRef}
+              id="video-path-input"
               type="text"
               value={path}
               aria-describedby="video-path-help"
+              aria-invalid={Boolean(displayedError) || undefined}
               disabled={isLoading}
               onChange={(event) => {
                 setPath(event.currentTarget.value)
@@ -193,10 +126,10 @@ export function VideoPathDialog({
                 onClearError()
               }}
             />
-          </label>
-          <p id="video-path-help" className="video-path-help">
+          </div>
+          <DialogDescription id="video-path-help" className="video-path-help">
             {messages.videoPathHelp}
-          </p>
+          </DialogDescription>
 
           {displayedError ? (
             <p className="video-path-error" role="alert">
@@ -204,16 +137,18 @@ export function VideoPathDialog({
             </p>
           ) : null}
 
-          <div className="video-path-actions">
-            <button type="button" className="video-path-secondary" onClick={onClose}>
-              {messages.cancel}
-            </button>
-            <button type="submit" className="video-path-primary" disabled={isLoading}>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                {messages.cancel}
+              </Button>
+            </DialogClose>
+            <Button type="submit" disabled={isLoading}>
               {isLoading ? messages.opening : messages.loadVideo}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
