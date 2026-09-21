@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
   TimelineWorkbench,
-  createTimelineEditorHistory,
-  type TimelineEditorClipboard,
   type TimelineEditorExtension,
-  type TimelineEditorHistory,
-  type TimelineEditorSelection,
-  type TimelineEditorViewport,
-  type TimelineWorkbenchTransportState,
 } from '@moritzbrantner/timeline-editor'
 import { createTimelineAudioExtension } from '@moritzbrantner/timeline-editor/audio'
 import { createTimelineTextExtension } from '@moritzbrantner/timeline-editor/text'
@@ -18,42 +12,22 @@ import { GenerationPanel } from './app/GenerationPanel'
 import { ReferenceVideoPreview } from './app/ReferenceVideoPreview'
 import { probeReferenceVideoMetadata, type ReferenceVideo } from './app/reference-video'
 import { StatusMessages } from './app/StatusMessages'
+import { useSubtitleEditorSession } from './app/useSubtitleEditorSession'
 import {
   startSubtitleGeneration,
   subscribeSubtitleJob,
   type SubtitleJobSubscription,
 } from './generation/client'
 import { type GeneratedTrack, type SubtitleJob, type SubtitleJobUpdate } from './generation/types'
-import {
-  attachReferenceAudio,
-  buildSubtitleSession,
-  createEmptySubtitleDocument,
-  type SubtitleAsset,
-  type SubtitleDocument,
-  type TimelineItemData,
-} from './subtitle-session'
-import {
-  loadReferenceVideoAudio,
-  type ReferenceVideoAudio,
-} from './reference-video-audio'
+import { type SubtitleAsset, type TimelineItemData } from './subtitle-session'
+import { loadReferenceVideoAudio } from './reference-video-audio'
 import { loadSubtitleAssets, requestVideoLoad, type LoadedVideo, type LoadWarning } from './video-load'
 import { getFitTimelinePixelsPerSecond } from './timeline-viewport'
 import { applyAppearance, getPreferredAppearance, type Appearance } from './appearance'
 import { getMessages, getPreferredLocale, persistLocale, type Locale } from './localization'
 import './App.css'
 
-type EditorHistory = TimelineEditorHistory<Record<string, unknown>, TimelineItemData>
 type EditorExtension = TimelineEditorExtension<TimelineItemData>
-
-const defaultTransportState: TimelineWorkbenchTransportState = {
-  status: 'paused',
-  playbackRate: 1,
-  loop: false,
-}
-
-function createEditorHistory(): EditorHistory {
-  return createTimelineEditorHistory() as EditorHistory
-}
 
 function useTimelineViewportWidth(containerRef: RefObject<HTMLElement | null>): number {
   const [widthPx, setWidthPx] = useState(0)
@@ -95,14 +69,17 @@ function App() {
     () => createTimelineAudioExtension() as unknown as EditorExtension,
     [],
   )
-  const [document, setDocument] = useState<SubtitleDocument>(() => createEmptySubtitleDocument())
-  const [selection, setSelection] = useState<TimelineEditorSelection>({ itemIds: [], trackIds: [] })
-  const [viewport, setViewport] = useState<TimelineEditorViewport>({ pixelsPerSecond: 80 })
-  const [clipboard, setClipboard] = useState<TimelineEditorClipboard<TimelineItemData>>()
-  const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory())
-  const [assets, setAssets] = useState<SubtitleAsset[]>([])
+  const editorSession = useSubtitleEditorSession()
+  const {
+    document,
+    selection,
+    viewport,
+    clipboard,
+    history,
+    assets,
+    transportState,
+  } = editorSession
   const [referenceVideo, setReferenceVideo] = useState<ReferenceVideo>()
-  const [transportState, setTransportState] = useState(defaultTransportState)
   const [loadError, setLoadError] = useState<string>()
   const [emptyState, setEmptyState] = useState<string>()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
@@ -117,7 +94,6 @@ function App() {
   const [generationMessage, setGenerationMessage] = useState<string>()
   const jobEventsRef = useRef<SubtitleJobSubscription | null>(null)
   const videoLoadAttemptRef = useRef(0)
-  const referenceAudioRef = useRef<ReferenceVideoAudio | undefined>(undefined)
   const editorWorkbenchRef = useRef<HTMLElement>(null)
   const editorViewportWidthPx = useTimelineViewportWidth(editorWorkbenchRef)
   const minPixelsPerSecond = useMemo(
@@ -132,17 +108,8 @@ function App() {
   useEffect(() => applyAppearance(appearance), [appearance])
 
   function commitLoadedSession(video: ReferenceVideo, nextAssets: SubtitleAsset[]) {
-    const session = buildSubtitleSession(video.durationMs, nextAssets)
-
-    referenceAudioRef.current = undefined
     setReferenceVideo(video)
-    setAssets(session.assets)
-    setDocument(session.document)
-    setSelection(session.selection)
-    setViewport({ pixelsPerSecond: 80 })
-    setHistory(createEditorHistory())
-    setClipboard(undefined)
-    setTransportState(defaultTransportState)
+    editorSession.replaceSession(video.durationMs, nextAssets)
     setEmptyState(nextAssets.length === 0 ? messages.emptyTracks : undefined)
   }
 
@@ -194,10 +161,7 @@ function App() {
         .then((referenceAudio) => {
           if (!isCurrentAttempt()) return
 
-          referenceAudioRef.current = referenceAudio
-          setDocument((current) =>
-            attachReferenceAudio(current, metadata.durationMs, referenceAudio),
-          )
+          editorSession.attachReferenceAudio(metadata.durationMs, referenceAudio)
         })
         .catch((error) => {
           if (!isCurrentAttempt()) return
@@ -261,31 +225,42 @@ function App() {
   }
 
   function applySubtitleJob(job: SubtitleJob) {
-    setGenerationMessage(job.state === 'failed' && job.message ? job.message : `${messages.jobPhases[job.phase]}…`)
+    setGenerationMessage(
+      job.state === 'failed' && job.message
+        ? job.message
+        : `${messages.jobPhases[job.phase]}…`,
+    )
     if (job.state === 'completed' || job.state === 'cancelled' || job.state === 'failed') {
       jobEventsRef.current?.close()
     }
     if (job.state !== 'completed') return
     const tracks = [
-      job.sourceTrack ? { track: job.sourceTrack, label: messages.sourceTrack, color: '#2fbf71' } : undefined,
-      job.translationTrack ? { track: job.translationTrack, label: messages.translationTrack, color: '#c084fc' } : undefined,
-    ].filter((entry): entry is { track: GeneratedTrack; label: string; color: string } => Boolean(entry))
+      job.sourceTrack
+        ? { track: job.sourceTrack, label: messages.sourceTrack, color: '#2fbf71' }
+        : undefined,
+      job.translationTrack
+        ? { track: job.translationTrack, label: messages.translationTrack, color: '#c084fc' }
+        : undefined,
+    ].filter(
+      (entry): entry is { track: GeneratedTrack; label: string; color: string } => Boolean(entry),
+    )
     if (!referenceVideo || tracks.length === 0) return
     const generatedAssets: SubtitleAsset[] = tracks.map(({ track, label, color }) => ({
       id: `${label.toLowerCase()}-${crypto.randomUUID()}`,
       label: `${label} — ${track.language.toUpperCase()}`,
-      kind: 'text', mediaType: 'text', color,
+      kind: 'text',
+      mediaType: 'text',
+      color,
       durationMs: Math.max(referenceVideo.durationMs, ...track.cues.map((cue) => cue.endMs)),
-      data: { mediaType: 'text' as const, format: 'webvtt' as const, language: track.language, cues: track.cues },
+      data: {
+        mediaType: 'text' as const,
+        format: 'webvtt' as const,
+        language: track.language,
+        cues: track.cues,
+      },
     }))
-    const session = buildSubtitleSession(
-      referenceVideo.durationMs,
-      [...assets, ...generatedAssets],
-      referenceAudioRef.current,
-    )
-    setAssets(session.assets)
-    setDocument(session.document)
-    setSelection(session.selection)
+
+    editorSession.appendAssets(referenceVideo.durationMs, generatedAssets)
     setEmptyState(undefined)
   }
 
@@ -325,9 +300,7 @@ function App() {
           referenceVideo={referenceVideo}
           currentTimeMs={document.currentTimeMs ?? 0}
           transportState={transportState}
-          onCurrentTimeChange={(currentTimeMs) => {
-            setDocument((current) => ({ ...current, currentTimeMs }))
-          }}
+          onCurrentTimeChange={editorSession.setCurrentTimeMs}
           onError={setLoadError}
           messages={messages}
         />
@@ -349,12 +322,12 @@ function App() {
             showAssetsPanel={false}
             showPreviewPanel={false}
             transportState={transportState}
-            onTransportStateChange={setTransportState}
-            onDocumentChange={setDocument}
-            onSelectionChange={setSelection}
-            onViewportChange={setViewport}
-            onClipboardChange={setClipboard}
-            onHistoryChange={setHistory}
+            onTransportStateChange={editorSession.workbench.onTransportStateChange}
+            onDocumentChange={editorSession.workbench.onDocumentChange}
+            onSelectionChange={editorSession.workbench.onSelectionChange}
+            onViewportChange={editorSession.workbench.onViewportChange}
+            onClipboardChange={editorSession.workbench.onClipboardChange}
+            onHistoryChange={editorSession.workbench.onHistoryChange}
           />
         </section>
       </div>
