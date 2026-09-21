@@ -27,7 +27,7 @@ describe('subtitle editor session controller', () => {
       ...initial,
       viewport: { pixelsPerSecond: 240 },
       clipboard: {} as typeof initial.clipboard,
-      transportState: { status: 'playing', playbackRate: 1.5, loop: true } as typeof initial.transportState,
+      transportState: { status: 'playing', playbackRate: 2, loop: true } as typeof initial.transportState,
     }
     const previousHistory = edited.history
     const session = buildSubtitleSession(90_000, [subtitleAsset('en', 12_000)])
