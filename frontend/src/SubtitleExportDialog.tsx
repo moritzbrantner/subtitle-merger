@@ -1,4 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@moritzbrantner/ui/components/stable/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@moritzbrantner/ui/components/stable/dialog'
+import { Label } from '@moritzbrantner/ui/components/stable/label'
 import {
   exportSubtitleTrack,
   listEditableSubtitleTracks,
@@ -17,13 +28,15 @@ type SubtitleExportDialogProps = {
   onClose: () => void
 }
 
-const focusableSelector = [
-  'button:not([disabled])',
-  'select:not([disabled])',
-  'input:not([disabled])',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ')
+function restoreFileMenuFocus(event: Event) {
+  const fileButton = window.document.querySelector<HTMLElement>(
+    'button[aria-controls="file-menu"]',
+  )
+  if (!fileButton) return
+
+  event.preventDefault()
+  fileButton.focus()
+}
 
 export function SubtitleExportDialog({
   open,
@@ -37,16 +50,8 @@ export function SubtitleExportDialog({
   const [trackId, setTrackId] = useState('')
   const [format, setFormat] = useState<SubtitleExportFormat>('srt')
   const [error, setError] = useState<string>()
-  const overlayRef = useRef<HTMLDivElement>(null)
-  const dialogRef = useRef<HTMLElement>(null)
   const trackSelectRef = useRef<HTMLSelectElement>(null)
-  const closeButtonRef = useRef<HTMLButtonElement>(null)
   const wasOpenRef = useRef(false)
-  const onCloseRef = useRef(onClose)
-
-  useEffect(() => {
-    onCloseRef.current = onClose
-  }, [onClose])
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current
@@ -69,86 +74,6 @@ export function SubtitleExportDialog({
     setTrackId(resolveExportTrackId(tracks, selectedTrackIds ?? []) ?? '')
   }, [open, selectedTrackIds, trackId, tracks])
 
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    const activeElement = window.document.activeElement
-    const previousFocus =
-      activeElement instanceof HTMLElement && activeElement !== window.document.body
-        ? activeElement
-        : null
-    const overlay = overlayRef.current
-    const siblings = overlay?.parentElement
-      ? Array.from(overlay.parentElement.children).filter((element) => element !== overlay)
-      : []
-    const previousInert = siblings.map((element) => [element, (element as HTMLElement).inert] as const)
-
-    for (const element of siblings) {
-      ;(element as HTMLElement).inert = true
-    }
-
-    const focusFrame = window.requestAnimationFrame(() => {
-      ;(trackSelectRef.current ?? closeButtonRef.current)?.focus()
-    })
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onCloseRef.current()
-        return
-      }
-
-      if (event.key !== 'Tab') {
-        return
-      }
-
-      const controls = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      )
-
-      if (controls.length === 0) {
-        event.preventDefault()
-        return
-      }
-
-      const first = controls[0]!
-      const last = controls.at(-1)!
-      const active = window.document.activeElement
-
-      if (!dialogRef.current?.contains(active)) {
-        event.preventDefault()
-        first.focus()
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame)
-      window.removeEventListener('keydown', handleKeyDown)
-      for (const [element, inert] of previousInert) {
-        ;(element as HTMLElement).inert = inert
-      }
-
-      const restoreTarget = previousFocus?.isConnected
-        ? previousFocus
-        : window.document.querySelector<HTMLElement>('button[aria-controls="file-menu"]')
-      restoreTarget?.focus()
-    }
-  }, [open])
-
-  if (!open) {
-    return null
-  }
-
   function exportTrack() {
     if (!trackId) {
       setError(messages.chooseTrack)
@@ -164,45 +89,47 @@ export function SubtitleExportDialog({
   }
 
   return (
-    <div
-      ref={overlayRef}
-      className="subtitle-export-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose()
-        }
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
       }}
     >
-      <section
-        ref={dialogRef}
+      <DialogContent
         className="subtitle-export-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="subtitle-export-heading"
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => {
+          if (!trackSelectRef.current) return
+          event.preventDefault()
+          trackSelectRef.current.focus()
+        }}
+        onCloseAutoFocus={restoreFileMenuFocus}
       >
-        <div className="subtitle-export-heading">
+        <DialogHeader className="subtitle-export-heading">
           <div>
-            <p className="eyebrow">{messages.exportEyebrow}</p>
-            <h2 id="subtitle-export-heading">{messages.exportHeading}</h2>
+            <DialogDescription className="eyebrow">{messages.exportEyebrow}</DialogDescription>
+            <DialogTitle>{messages.exportHeading}</DialogTitle>
           </div>
-          <button
-            ref={closeButtonRef}
-            className="subtitle-export-close"
-            type="button"
-            aria-label={messages.closeExportDialog}
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
+          <DialogClose asChild>
+            <Button
+              className="subtitle-export-close"
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              aria-label={messages.closeExportDialog}
+            >
+              ×
+            </Button>
+          </DialogClose>
+        </DialogHeader>
 
         {tracks.length > 0 ? (
           <div className="subtitle-export-fields">
-            <label>
-              {messages.track}
+            <div className="subtitle-export-field">
+              <Label htmlFor="subtitle-export-track">{messages.track}</Label>
               <select
                 ref={trackSelectRef}
+                id="subtitle-export-track"
                 value={trackId}
                 onChange={(event) => setTrackId(event.currentTarget.value)}
               >
@@ -212,7 +139,7 @@ export function SubtitleExportDialog({
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
 
             <fieldset>
               <legend>{messages.format}</legend>
@@ -239,27 +166,30 @@ export function SubtitleExportDialog({
             </fieldset>
           </div>
         ) : (
-          <p className="subtitle-export-empty">
-            {messages.noEditableTracks}
-          </p>
+          <p className="subtitle-export-empty">{messages.noEditableTracks}</p>
         )}
 
-        {error ? <p className="subtitle-export-error" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="subtitle-export-error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
-        <div className="subtitle-export-actions">
-          <button type="button" className="subtitle-export-secondary" onClick={onClose}>
-            {messages.cancel}
-          </button>
-          <button
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              {messages.cancel}
+            </Button>
+          </DialogClose>
+          <Button
             type="button"
-            className="subtitle-export-primary"
             disabled={tracks.length === 0 || !trackId}
             onClick={exportTrack}
           >
             {messages.export}
-          </button>
-        </div>
-      </section>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
