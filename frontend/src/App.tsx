@@ -148,33 +148,47 @@ function App() {
       />
 
       <div className="editor-content">
-        <StatusMessages
-          error={previewError}
-          warnings={videoLoader.loadWarnings}
-          emptyState={emptyState}
-        />
-        {videoLoader.selectedVideo ? (
-          <GenerationPanel
-            messages={messages}
-            locale={locale}
-            targetLanguage={generation.targetLanguage}
-            diarize={generation.diarize}
-            isGenerating={generation.isGenerating}
-            generationMessage={generation.generationMessage}
-            onTargetLanguageChange={generation.setTargetLanguage}
-            onDiarizeChange={generation.setDiarize}
-            onGenerate={() => void generation.generate()}
+        <div className="editor-status-region">
+          <StatusMessages
+            error={previewError}
+            warnings={videoLoader.loadWarnings}
+            emptyState={emptyState}
           />
-        ) : null}
+        </div>
 
-        <ReferenceVideoPreview
-          referenceVideo={videoLoader.referenceVideo}
-          currentTimeMs={document.currentTimeMs ?? 0}
-          transportState={transportState}
-          onCurrentTimeChange={editorSession.setCurrentTimeMs}
-          onError={setPreviewError}
-          messages={messages}
-        />
+        <div
+          className={
+            videoLoader.selectedVideo
+              ? 'editor-upper-workspace'
+              : 'editor-upper-workspace editor-upper-workspace--viewer-only'
+          }
+        >
+          <ReferenceVideoPreview
+            referenceVideo={videoLoader.referenceVideo}
+            document={document}
+            currentTimeMs={document.currentTimeMs ?? 0}
+            transportState={transportState}
+            onCurrentTimeChange={editorSession.setCurrentTimeMs}
+            onError={setPreviewError}
+            messages={messages}
+          />
+
+          {videoLoader.selectedVideo ? (
+            <aside className="editor-sidebar" aria-label={messages.automaticSubtitles}>
+              <GenerationPanel
+                messages={messages}
+                locale={locale}
+                targetLanguage={generation.targetLanguage}
+                diarize={generation.diarize}
+                isGenerating={generation.isGenerating}
+                generationMessage={generation.generationMessage}
+                onTargetLanguageChange={generation.setTargetLanguage}
+                onDiarizeChange={generation.setDiarize}
+                onGenerate={() => void generation.generate()}
+              />
+            </aside>
+          ) : null}
+        </div>
 
         <section
           ref={editorWorkbenchRef}
