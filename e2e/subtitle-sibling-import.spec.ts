@@ -49,7 +49,7 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
   await page.route('**/api/test-subtitle-text', async (route) => {
     await route.fulfill({
       contentType: 'application/x-subrip',
-      body: '1\n00:00:01,000 --> 00:00:03,000\nOgres are like onions.\n',
+      body: '1\n00:00:00,000 --> 00:00:03,000\nOgres are like onions.\n',
     })
   })
   await page.route('**/api/test-broken-subtitle-text', async (route) => {
@@ -70,6 +70,9 @@ test('opens valid Subtitle Siblings and reports broken siblings from the File me
     page
       .locator("[data-slot='timeline-workbench-canvas']")
       .locator("[data-slot='timeline-editor-track-header'][aria-label='English']"),
+  ).toBeVisible()
+  await expect(
+    page.getByTestId('subtitle-preview-cue').filter({ hasText: 'Ogres are like onions.' }),
   ).toBeVisible()
   await expect(
     page.getByRole('status').filter({ hasText: 'acceptance-video.de.srt' }),
