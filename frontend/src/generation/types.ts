@@ -10,6 +10,9 @@ export type SubtitleJobState = (typeof subtitleJobStates)[number]
 
 export const subtitleJobPhases = [
   'queued',
+  'checkingModels',
+  'downloadingModels',
+  'loadingModels',
   'decoding',
   'detectingSpeech',
   'transcribing',

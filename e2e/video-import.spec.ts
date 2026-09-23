@@ -19,6 +19,19 @@ const loadedVideo = {
   warnings: [],
 }
 
+// These shell tests mock the local API and must not fall through to a missing
+// native backend when the generation panel checks first-use capabilities.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/generation-preflight', (route) => route.fulfill({
+    json: {
+      ready: true,
+      cacheDir: '/test-model-cache',
+      modelDownloadsAutomatic: true,
+      diarizationAvailable: false,
+    },
+  }))
+})
+
 test('opens, validates, and cancels the absolute-path dialog from the keyboard', async ({ page }) => {
   await page.goto('/')
 
@@ -74,7 +87,7 @@ test('loads a Reference Video by absolute path with an observable loading state'
   await expect(referenceAudioClip).toBeVisible()
   await expect(referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform"]')).toBeVisible()
   await expect(page.locator("[data-slot='timeline-workbench-assets']")).toHaveCount(0)
-  await expect(page.getByRole('status')).toContainText('No subtitle tracks yet')
+  await expect(page.getByRole('status').filter({ hasText: 'No subtitle tracks yet' })).toBeVisible()
 
   expect(
     await referenceVideo.evaluate((video) => ({
