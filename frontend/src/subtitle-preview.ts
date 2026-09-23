@@ -22,8 +22,10 @@ export function getActiveSubtitlePreviewCues(
 ): ActiveSubtitlePreviewCue[] {
   return document.tracks.flatMap((track) =>
     track.items.flatMap((item) => {
+      const data = item.data
+
       if (
-        item.data?.mediaType !== 'text' ||
+        data?.mediaType !== 'text' ||
         currentTimeMs < item.startMs ||
         currentTimeMs > item.startMs + item.durationMs
       ) {
@@ -31,8 +33,8 @@ export function getActiveSubtitlePreviewCues(
       }
 
       const offsetMs = Math.max(0, currentTimeMs - item.startMs)
-      return getTimelineTextCuesAt(item.data, offsetMs).map((cue, index) => {
-        const style = getTimelineTextStyleForCue(item.data, cue)
+      return getTimelineTextCuesAt(data, offsetMs).map((cue, index) => {
+        const style = getTimelineTextStyleForCue(data, cue)
 
         return {
           key:
