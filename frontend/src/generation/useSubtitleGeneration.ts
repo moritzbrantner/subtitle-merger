@@ -3,6 +3,8 @@ import type { AppMessages } from '../localization'
 import type { SubtitleAsset } from '../subtitle-session'
 import type { LoadedVideo } from '../video-load'
 import {
+  cancelSubtitleJob,
+  isTerminalJob,
   startSubtitleGeneration,
   subscribeSubtitleJob,
   type StartSubtitleGenerationOptions,
@@ -13,6 +15,7 @@ import type { GeneratedTrack, SubtitleJob, SubtitleJobUpdate } from './types'
 type SubtitleGenerationDependencies = {
   startSubtitleGeneration: typeof startSubtitleGeneration
   subscribeSubtitleJob: typeof subscribeSubtitleJob
+  cancelSubtitleJob?: typeof cancelSubtitleJob
 }
 
 type SubtitleGenerationCallbacks = {
@@ -24,6 +27,7 @@ type SubtitleGenerationCallbacks = {
 const defaultDependencies: SubtitleGenerationDependencies = {
   startSubtitleGeneration,
   subscribeSubtitleJob,
+  cancelSubtitleJob,
 }
 
 export function createSubtitleGenerationController(
@@ -31,15 +35,28 @@ export function createSubtitleGenerationController(
 ) {
   let currentAttempt = 0
   let subscription: SubtitleJobSubscription | null = null
+  let startup: AbortController | null = null
+  let activeJob: SubtitleJob | null = null
+  let activeCallbacks: SubtitleGenerationCallbacks | null = null
 
   const closeSubscription = () => {
     subscription?.close()
     subscription = null
   }
-
+  const cancelServerJob = (job: SubtitleJob) => {
+    if (!isTerminalJob(job)) {
+      void dependencies.cancelSubtitleJob?.(job.jobId).catch(() => undefined)
+    }
+  }
   const cancel = () => {
     currentAttempt += 1
+    startup?.abort()
+    startup = null
     closeSubscription()
+    if (activeJob) cancelServerJob(activeJob)
+    activeJob = null
+    activeCallbacks?.onGeneratingChange(false)
+    activeCallbacks = null
   }
 
   const generate = async (
@@ -47,84 +64,86 @@ export function createSubtitleGenerationController(
     messages: AppMessages,
     callbacks: SubtitleGenerationCallbacks,
   ) => {
-    const attempt = currentAttempt + 1
-    currentAttempt = attempt
-    closeSubscription()
+    cancel()
+    const attempt = currentAttempt
     const isCurrentAttempt = () => currentAttempt === attempt
+    const abort = new AbortController()
+    startup = abort
+    activeCallbacks = callbacks
+    let finished = false
 
     callbacks.onGeneratingChange(true)
     callbacks.onMessage(messages.preparingGeneration)
 
     const applyJob = (job: SubtitleJob) => {
-      if (!isCurrentAttempt()) return
-
+      if (!isCurrentAttempt() || finished) return
+      activeJob = job
       callbacks.onMessage(
-        job.state === 'failed' && job.message
+        isTerminalJob(job) && job.message
           ? job.message
           : `${messages.jobPhases[job.phase]}…`,
       )
-
-      if (
-        job.state === 'completed' ||
-        job.state === 'cancelled' ||
-        job.state === 'failed'
-      ) {
+      if (isTerminalJob(job)) {
+        finished = true
+        activeJob = null
+        activeCallbacks = null
         closeSubscription()
-      }
-
-      if (job.state === 'completed') {
-        callbacks.onCompleted(job)
+        callbacks.onGeneratingChange(false)
+        if (job.sourceTrack || job.translationTrack) callbacks.onCompleted(job)
       }
     }
-
     const applyUpdate = (update: SubtitleJobUpdate) => {
-      if (!isCurrentAttempt()) return
-
+      if (!isCurrentAttempt() || finished) return
       if (update.kind === 'progress') {
         callbacks.onMessage(`${messages.jobPhases[update.progress.phase]}…`)
-        return
+      } else {
+        applyJob(update.job)
       }
-
-      applyJob(update.job)
     }
 
     try {
-      const job = await dependencies.startSubtitleGeneration(options)
-      if (!isCurrentAttempt()) return
-
-      callbacks.onMessage(messages.jobPhases[job.phase])
-      const nextSubscription = dependencies.subscribeSubtitleJob(job.jobId, applyUpdate, {
-        onProtocolError: () => {
-          if (isCurrentAttempt()) {
-            callbacks.onMessage(messages.generationRunning)
-          }
-        },
-      })
-
+      const job = await dependencies.startSubtitleGeneration({ ...options, signal: abort.signal })
       if (!isCurrentAttempt()) {
-        nextSubscription.close()
+        cancelServerJob(job)
         return
       }
+      startup = null
+      applyJob(job)
+      if (finished) return
 
-      subscription = nextSubscription
+      const nextSubscription = dependencies.subscribeSubtitleJob(job.jobId, applyUpdate, {
+        onProtocolError: () => {
+          if (isCurrentAttempt() && !finished) callbacks.onMessage(messages.generationRunning)
+        },
+        onFatalError: (message) => {
+          if (!isCurrentAttempt() || finished) return
+          finished = true
+          activeJob = null
+          activeCallbacks = null
+          closeSubscription()
+          callbacks.onGeneratingChange(false)
+          callbacks.onMessage(message)
+        },
+      })
+      // A source may synchronously replay a terminal snapshot while subscribing.
+      if (!isCurrentAttempt() || finished) nextSubscription.close()
+      else subscription = nextSubscription
     } catch (error) {
       if (isCurrentAttempt()) {
-        callbacks.onMessage(
-          error instanceof Error ? error.message : messages.jobPhases.failed,
-        )
-      }
-    } finally {
-      if (isCurrentAttempt()) {
+        startup = null
+        if (activeJob) cancelServerJob(activeJob)
+        activeJob = null
+        activeCallbacks = null
+        finished = true
+        closeSubscription()
         callbacks.onGeneratingChange(false)
+        callbacks.onMessage(error instanceof Error ? error.message : messages.jobPhases.failed)
       }
     }
+    // Busy remains true throughout model setup and inference, not merely the POST.
   }
 
-  return {
-    generate,
-    cancel,
-    dispose: cancel,
-  }
+  return { generate, cancel, dispose: cancel }
 }
 
 export function buildGeneratedSubtitleAssets(
@@ -141,8 +160,7 @@ export function buildGeneratedSubtitleAssets(
       ? { track: job.translationTrack, label: messages.translationTrack, color: '#c084fc' }
       : undefined,
   ].filter(
-    (entry): entry is { track: GeneratedTrack; label: string; color: string } =>
-      Boolean(entry),
+    (entry): entry is { track: GeneratedTrack; label: string; color: string } => Boolean(entry),
   )
 
   return tracks.map(({ track, label, color }) => ({
@@ -151,10 +169,7 @@ export function buildGeneratedSubtitleAssets(
     kind: 'text',
     mediaType: 'text',
     color,
-    durationMs: Math.max(
-      referenceVideoDurationMs,
-      ...track.cues.map((cue) => cue.endMs),
-    ),
+    durationMs: Math.max(referenceVideoDurationMs, ...track.cues.map((cue) => cue.endMs)),
     data: {
       mediaType: 'text' as const,
       format: 'webvtt' as const,
@@ -178,92 +193,48 @@ type GenerationStatus = {
 }
 
 export function useSubtitleGeneration({
-  messages,
-  video,
-  referenceVideoDurationMs,
-  onCompletedAssets,
+  messages, video, referenceVideoDurationMs, onCompletedAssets,
 }: UseSubtitleGenerationOptions) {
   const controller = useMemo(() => createSubtitleGenerationController(), [])
   const previousVideoIdRef = useRef(video?.id)
   const [targetLanguage, setTargetLanguage] = useState('')
   const [diarize, setDiarize] = useState(false)
-  const [status, setStatus] = useState<GenerationStatus>({
-    videoId: video?.id,
-    isGenerating: false,
-  })
+  const [status, setStatus] = useState<GenerationStatus>({ videoId: video?.id, isGenerating: false })
 
   useEffect(() => () => controller.dispose(), [controller])
-
   useEffect(() => {
-    if (previousVideoIdRef.current === video?.id) {
-      return
-    }
-
+    if (previousVideoIdRef.current === video?.id) return
     previousVideoIdRef.current = video?.id
     controller.cancel()
     setStatus({ videoId: video?.id, isGenerating: false })
   }, [controller, video?.id])
 
   const generate = useCallback(async () => {
-    if (!video || referenceVideoDurationMs === undefined) {
-      return
-    }
-
+    if (!video || referenceVideoDurationMs === undefined) return
     const videoId = video.id
     await controller.generate(
-      {
-        video,
-        targetLanguage: targetLanguage || undefined,
-        diarize,
-      },
+      { video, targetLanguage: targetLanguage || undefined, diarize },
       messages,
       {
         onGeneratingChange: (isGenerating) => {
-          setStatus((current) => ({
-            ...current,
-            videoId,
-            isGenerating,
-          }))
+          setStatus((current) => ({ ...current, videoId, isGenerating }))
         },
         onMessage: (message) => {
-          setStatus((current) => ({
-            ...current,
-            videoId,
-            message,
-          }))
+          setStatus((current) => ({ ...current, videoId, message }))
         },
         onCompleted: (job) => {
-          const assets = buildGeneratedSubtitleAssets(
-            job,
-            referenceVideoDurationMs,
-            messages,
-          )
-
-          if (assets.length > 0) {
-            onCompletedAssets(assets)
-          }
+          const assets = buildGeneratedSubtitleAssets(job, referenceVideoDurationMs, messages)
+          if (assets.length > 0) onCompletedAssets(assets)
         },
       },
     )
-  }, [
-    controller,
-    diarize,
-    messages,
-    onCompletedAssets,
-    referenceVideoDurationMs,
-    targetLanguage,
-    video,
-  ])
+  }, [controller, diarize, messages, onCompletedAssets, referenceVideoDurationMs, targetLanguage, video])
 
   const isCurrentVideo = status.videoId === video?.id
-
   return {
-    targetLanguage,
-    diarize,
+    targetLanguage, diarize,
     isGenerating: isCurrentVideo ? status.isGenerating : false,
     generationMessage: isCurrentVideo ? status.message : undefined,
-    setTargetLanguage,
-    setDiarize,
-    generate,
+    setTargetLanguage, setDiarize, generate,
   }
 }

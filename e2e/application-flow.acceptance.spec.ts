@@ -56,7 +56,6 @@ async function describeConsoleMessage(message: ConsoleMessage): Promise<string> 
       }
     }),
   )
-
   return values.filter(Boolean).join(' ') || message.text() || '<empty console error>'
 }
 
@@ -67,7 +66,6 @@ async function describeErrorResponse(response: Response): Promise<string> {
   } catch {
     // Some response bodies are not retained by the browser. The status and URL are still useful.
   }
-
   return `${response.status()} ${response.url()}\n${body}`
 }
 
@@ -91,6 +89,9 @@ test('opens, generates, edits and exports subtitles through the application shel
     if (response.status() >= 400) errorResponses.push(describeErrorResponse(response))
   })
 
+  await page.route('**/api/generation-preflight', (route) => route.fulfill({
+    json: { ready: true, cacheDir: '/empty-model-cache', modelDownloadsAutomatic: true, diarizationAvailable: false },
+  }))
   await page.route('**/api/video-loads', async (route) => {
     expect(route.request().postDataJSON()).toEqual({ path: fixturePath })
     await route.fulfill({
@@ -117,14 +118,21 @@ test('opens, generates, edits and exports subtitles through the application shel
   })
   await page.route('**/api/subtitle-jobs', async (route) => {
     expect(route.request().method()).toBe('POST')
+    const body = route.request().postData() ?? ''
+    expect(body).toContain('name="mediaId"')
+    expect(body).not.toContain('filename=')
     await route.fulfill({ contentType: 'application/json', json: queuedJob })
   })
   await page.route('**/api/subtitle-jobs/job-1/events', async (route) => {
     await route.abort('connectionrefused')
   })
+  let finishGeneration = false
   await page.route('**/api/subtitle-jobs/job-1', async (route) => {
     expect(route.request().method()).toBe('GET')
-    await route.fulfill({ contentType: 'application/json', json: completedJob })
+    await route.fulfill({
+      contentType: 'application/json',
+      json: finishGeneration ? completedJob : { ...queuedJob, state: 'running', phase: 'downloadingModels' },
+    })
   })
 
   await page.goto('/')
@@ -155,22 +163,24 @@ test('opens, generates, edits and exports subtitles through the application shel
   await expect(page.getByTestId('reference-video')).toBeVisible()
   await expect(page.getByRole('heading', { name: fixtureFilename })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Generate subtitles' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Identify speakers' })).toBeDisabled()
+  await expect(page.getByText(/Missing AI models download automatically/)).toBeVisible()
 
   const referenceAudioClip = page.locator(
     `[data-slot="timeline-editor-clip"][aria-label="${fixtureFilename}"]`,
   )
   await expect(referenceAudioClip).toBeVisible()
-  await expect(
-    referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform"]'),
-  ).toBeVisible()
-  await expect(
-    referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform-bar"]').first(),
-  ).toBeVisible()
+  await expect(referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform"]')).toBeVisible()
+  await expect(referenceAudioClip.locator('[data-slot="timeline-media-audio-waveform-bar"]').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Generate subtitles', exact: true }).click()
+  await expect(page.locator('.generation-panel').getByRole('status')).toContainText('Downloading required models')
+  await expect(page.getByRole('button', { name: 'Subtitle generation is running…' })).toBeDisabled()
+  finishGeneration = true
 
   const subtitleClip = page.locator('[data-slot="timeline-editor-clip"][role="button"][aria-label="Subtitles — EN"]')
   await expect(subtitleClip).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Generate subtitles', exact: true })).toBeEnabled()
   const timeline = page.locator('[data-slot="timeline-editor"]')
   await timeline.focus()
   await timeline.press('Delete')
@@ -187,20 +197,15 @@ test('opens, generates, edits and exports subtitles through the application shel
 
   if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
     await mkdir('.artifacts', { recursive: true })
-    await page.screenshot({
-      path: '.artifacts/ui-consumer-convergence.png',
-      fullPage: true,
-    })
+    await page.screenshot({ path: '.artifacts/ui-consumer-convergence.png', fullPage: true })
   }
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export', exact: true }).click()
   const download = await downloadPromise
   const downloadPath = await download.path()
-
   expect(download.suggestedFilename()).toBe('subtitles-en-en.srt')
   expect(downloadPath).not.toBeNull()
-
   const exported = await readFile(downloadPath!, 'utf8')
   expect(exported).toContain('00:00:00,500 --> 00:00:01,500')
   expect(exported).toContain('Generated subtitle')

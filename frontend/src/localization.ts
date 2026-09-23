@@ -1,3 +1,5 @@
+import type { SubtitleJobPhase } from './generation/types'
+
 export const supportedLocales = ['en', 'de', 'es'] as const
 
 export type Locale = (typeof supportedLocales)[number]
@@ -25,6 +27,9 @@ export type AppMessages = {
   automaticSubtitles: string
   generateSubtitles: string
   generationDescription: string
+  modelSetupNotice: string
+  speakerUnavailable: string
+  modelCache: string
   translateTo: string
   noTranslation: string
   identifySpeakers: string
@@ -50,20 +55,7 @@ export type AppMessages = {
   export: string
   chooseTrack: string
   exportFailed: string
-  jobPhases: Record<
-    | 'queued'
-    | 'decoding'
-    | 'detectingSpeech'
-    | 'transcribing'
-    | 'aligning'
-    | 'diarizing'
-    | 'translating'
-    | 'writingOutput'
-    | 'completed'
-    | 'cancelled'
-    | 'failed',
-    string
-  >
+  jobPhases: Record<SubtitleJobPhase, string>
 }
 
 const messages: Record<Locale, AppMessages> = {
@@ -91,6 +83,9 @@ const messages: Record<Locale, AppMessages> = {
     automaticSubtitles: 'Automatic subtitles',
     generateSubtitles: 'Generate subtitles',
     generationDescription: 'Creates an editable source track and optional translated track.',
+    modelSetupNotice: 'Missing AI models download automatically when you generate subtitles. The first run needs internet access and free disk space; cached models are reused. Translation downloads only the models for the requested languages.',
+    speakerUnavailable: 'Speaker identification is not included in this build.',
+    modelCache: 'Model cache',
     translateTo: 'Translate to',
     noTranslation: 'No translation',
     identifySpeakers: 'Identify speakers',
@@ -118,6 +113,9 @@ const messages: Record<Locale, AppMessages> = {
     exportFailed: 'Could not export subtitles.',
     jobPhases: {
       queued: 'Queued',
+      checkingModels: 'Checking cached models',
+      downloadingModels: 'Downloading required models',
+      loadingModels: 'Loading models',
       decoding: 'Decoding media',
       detectingSpeech: 'Detecting speech',
       transcribing: 'Transcribing',
@@ -154,6 +152,9 @@ const messages: Record<Locale, AppMessages> = {
     automaticSubtitles: 'Automatische Untertitel',
     generateSubtitles: 'Untertitel erzeugen',
     generationDescription: 'Erstellt eine bearbeitbare Quellspur und optional eine übersetzte Spur.',
+    modelSetupNotice: 'Fehlende KI-Modelle werden beim Erzeugen automatisch heruntergeladen. Der erste Durchlauf benötigt Internet und freien Speicherplatz; vorhandene Modelle werden wiederverwendet. Für Übersetzungen werden nur die benötigten Sprachmodelle geladen.',
+    speakerUnavailable: 'Sprechererkennung ist in dieser Version nicht enthalten.',
+    modelCache: 'Modell-Cache',
     translateTo: 'Übersetzen nach',
     noTranslation: 'Keine Übersetzung',
     identifySpeakers: 'Sprecher erkennen',
@@ -181,6 +182,9 @@ const messages: Record<Locale, AppMessages> = {
     exportFailed: 'Untertitel konnten nicht exportiert werden.',
     jobPhases: {
       queued: 'Eingereiht',
+      checkingModels: 'Vorhandene Modelle werden geprüft',
+      downloadingModels: 'Benötigte Modelle werden heruntergeladen',
+      loadingModels: 'Modelle werden geladen',
       decoding: 'Medien werden dekodiert',
       detectingSpeech: 'Sprache wird erkannt',
       transcribing: 'Transkription läuft',
@@ -217,6 +221,9 @@ const messages: Record<Locale, AppMessages> = {
     automaticSubtitles: 'Subtítulos automáticos',
     generateSubtitles: 'Generar subtítulos',
     generationDescription: 'Crea una pista fuente editable y una pista traducida opcional.',
+    modelSetupNotice: 'Los modelos de IA que falten se descargan al generar subtítulos. La primera ejecución necesita internet y espacio libre; los modelos guardados se reutilizan. La traducción descarga solo los modelos de los idiomas solicitados.',
+    speakerUnavailable: 'La identificación de hablantes no está incluida en esta versión.',
+    modelCache: 'Caché de modelos',
     translateTo: 'Traducir a',
     noTranslation: 'Sin traducción',
     identifySpeakers: 'Identificar hablantes',
@@ -244,6 +251,9 @@ const messages: Record<Locale, AppMessages> = {
     exportFailed: 'No se pudieron exportar los subtítulos.',
     jobPhases: {
       queued: 'En cola',
+      checkingModels: 'Comprobando modelos guardados',
+      downloadingModels: 'Descargando modelos necesarios',
+      loadingModels: 'Cargando modelos',
       decoding: 'Decodificando medios',
       detectingSpeech: 'Detectando voz',
       transcribing: 'Transcribiendo',
@@ -265,10 +275,8 @@ export function normalizeLocale(value?: string | null): Locale {
 
 export function getPreferredLocale(): Locale {
   if (typeof window === 'undefined') return 'en'
-
   const stored = window.localStorage.getItem('subtitle-merger.locale')
   if (stored) return normalizeLocale(stored)
-
   return normalizeLocale(window.navigator.languages?.[0] ?? window.navigator.language)
 }
 
