@@ -29,7 +29,7 @@ const completedJob = {
     pivoted: false,
     cues: [
       {
-        startMs: 500,
+        startMs: 0,
         endMs: 1_500,
         text: 'Generated subtitle',
       },
@@ -171,19 +171,22 @@ test('opens, generates, edits and exports subtitles through the application shel
 
   const subtitleClip = page.locator('[data-slot="timeline-editor-clip"][role="button"][aria-label="Subtitles — EN"]')
   await expect(subtitleClip).toBeVisible()
+  const subtitlePreviewCue = page
+    .getByTestId('subtitle-preview-cue')
+    .filter({ hasText: 'Generated subtitle' })
+  await expect(subtitlePreviewCue).toBeVisible()
+
   const timeline = page.locator('[data-slot="timeline-editor"]')
   await timeline.focus()
   await timeline.press('Delete')
   await expect(subtitleClip).toHaveCount(0)
-  await expect(referenceAudioClip).toBeVisible()
-  await timeline.press('Control+z')
-  await expect(subtitleClip).toBeVisible()
+  await expect(page.getByTestId('subtitle-preview-cue')).toHaveCount(0)
   await expect(referenceAudioClip).toBeVisible()
 
-  await page.getByRole('button', { name: 'File', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Track' })).toHaveValue(/subtitle-/)
+  await timeline.press('Control+z')
+  await expect(subtitleClip).toBeVisible()
+  await expect(subtitlePreviewCue).toBeVisible()
+  await expect(referenceAudioClip).toBeVisible()
 
   if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
     await mkdir('.artifacts', { recursive: true })
@@ -192,6 +195,11 @@ test('opens, generates, edits and exports subtitles through the application shel
       fullPage: true,
     })
   }
+
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Export subtitles…' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Track' })).toHaveValue(/subtitle-/)
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export', exact: true }).click()
@@ -202,6 +210,6 @@ test('opens, generates, edits and exports subtitles through the application shel
   expect(downloadPath).not.toBeNull()
 
   const exported = await readFile(downloadPath!, 'utf8')
-  expect(exported).toContain('00:00:00,500 --> 00:00:01,500')
+  expect(exported).toContain('00:00:00,000 --> 00:00:01,500')
   expect(exported).toContain('Generated subtitle')
 })
