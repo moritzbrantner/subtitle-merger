@@ -141,6 +141,7 @@ test('falls back to a bounded browser media stream when whole-video reading fail
     }).__subtitleMergerGenerationEvidence,
   )
   expect(evidence).toEqual({
+    blobPathUsed: true,
     streamPathUsed: true,
     audioTrackCount: 1,
   })
