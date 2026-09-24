@@ -22,6 +22,8 @@ The Pages surface:
 - uses Rust/WASM to inspect MP4/MOV and Matroska/WebM containers and extract supported embedded text subtitle tracks;
 - reports unsupported embedded bitmap/non-text subtitle tracks rather than dropping them silently;
 - consumes an exact reviewed `audio-analysis-transcription-wasm` revision for WebGPU transcription, matching the reusable browser capability consumed by Native WhisperX instead of copying Native WhisperX product logic or implementing another Whisper runtime;
+- keeps the user-selected Reference Video attached to its file input while the file-backed workflow is active;
+- limits whole-Blob browser transcription to Reference Videos no larger than 128 MiB; larger videos and whole-file read/allocation failures use the upstream bounded MediaStream transcription session fed from silent local media playback instead of copying the complete file into one `ArrayBuffer`;
 - converts only validated timed browser transcription segments into a generated Subtitle Track, then uses the existing Rust/WASM subtitle serialization path to create its editable SRT source document;
 - projects Rust-owned cue timing/text into React for preview, timeline navigation, and downloads;
 - keeps browser alignment, diarization, and the full Native WhisperX translation/workflow surface outside Pages; those capabilities continue to use the native/backend boundary documented in ADR 0003.
