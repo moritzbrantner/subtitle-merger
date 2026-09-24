@@ -27,6 +27,10 @@ _Avoid_: video track, cue track
 **Subtitle Generation Job**:
 A session-scoped request that uploads one video and produces source and optional translated subtitle tracks.
 
+**Browser Subtitle Generation**:
+A browser-local transcription of the selected Reference Video into one editable, timed Subtitle Track. It consumes the reviewed WebGPU transcription capability also used by Native WhisperX's browser surface and does not upload media to an application server.
+_Avoid_: Subtitle Generation Job, server generation, browser alignment
+
 **Source Subtitle Track**:
 The editable, time-aligned transcript in the spoken language.
 
