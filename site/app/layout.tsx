@@ -6,7 +6,7 @@ import "./editor.css";
 
 export const metadata: Metadata = {
   title: "Subtitle Merger",
-  description: "Inspect a local video, extract embedded text subtitles, and compare subtitle files entirely in your browser.",
+  description: "Inspect a local video, generate or add subtitle tracks, edit them, and export entirely in your browser.",
 };
 
 type RootLayoutProps = {
