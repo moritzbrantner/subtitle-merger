@@ -242,9 +242,6 @@ function isWholeFileReadFailure(error: unknown) {
   if (error instanceof DOMException) {
     return error.name === "NotReadableError" || error.name === "NotFoundError";
   }
-  if (error instanceof RangeError) {
-    return true;
-  }
   if (!(error instanceof Error)) {
     return false;
   }
@@ -253,6 +250,7 @@ function isWholeFileReadFailure(error: unknown) {
   return (
     message.includes("array buffer")
     || message.includes("arraybuffer")
+    || message.includes("allocation failed")
     || message.includes("could not be read")
   );
 }
@@ -389,9 +387,6 @@ export async function transcribeReferenceVideo(
   }
 
   const canStream = supportsMediaElementCapture();
-  if (canStream && file.size > MAX_IN_MEMORY_REFERENCE_VIDEO_BYTES) {
-    return transcribeReferenceVideoStream(runtime, file, onProgress);
-  }
 
   try {
     return await transcribeReferenceVideoBlob(runtime, file, onProgress);
