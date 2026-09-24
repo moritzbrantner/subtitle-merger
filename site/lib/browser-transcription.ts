@@ -159,8 +159,13 @@ export async function transcribeReferenceVideo(
     throw new Error("WebGPU is required for browser subtitle generation.");
   }
 
+  if (onProgress) {
+    return runtime.transcribeAudioBlob(file, {
+      source: file.name,
+      onProgress,
+    });
+  }
   return runtime.transcribeAudioBlob(file, {
     source: file.name,
-    onProgress,
   });
 }
