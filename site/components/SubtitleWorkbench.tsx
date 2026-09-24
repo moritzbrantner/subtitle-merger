@@ -309,7 +309,6 @@ export function SubtitleWorkbench() {
 
   async function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
     if (!file) {
       return;
     }

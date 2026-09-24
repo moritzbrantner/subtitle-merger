@@ -39,6 +39,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.14
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          targets: wasm32-unknown-unknown
       - name: Verify exact editor-family source graph
         run: bun run source:verify-graph
       - name: Prepare editor-family source
@@ -53,12 +57,21 @@ jobs:
           fi
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
+      - name: Install Pages dependencies
+        working-directory: site
+        run: bun install --frozen-lockfile
       - name: Run deterministic browser acceptance
         env:
           CAPTURE_UI_SCREENSHOT: "1"
         run: bun run test:acceptance
       - name: Run focused video path browser tests
         run: bun run test:e2e:video-load
+      - name: Build Pages Rust WebAssembly asset
+        run: bun run build:web-wasm
+      - name: Run Pages browser generation regression
+        env:
+          CAPTURE_UI_SCREENSHOT: "1"
+        run: bunx playwright test e2e/pages-browser-generation.acceptance.spec.ts --config playwright.pages.config.ts --retries=0
       - name: Report active source revisions
         if: always()
         run: bun run source:status
@@ -67,7 +80,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ui-consumer-convergence
-          path: .artifacts/ui-consumer-convergence.png
+          path: |
+            .artifacts/ui-consumer-convergence.png
+            .artifacts/browser-generation-readability.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload browser failure evidence

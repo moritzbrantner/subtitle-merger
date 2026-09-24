@@ -22,6 +22,8 @@ The Pages surface:
 - uses Rust/WASM to inspect MP4/MOV and Matroska/WebM containers and extract supported embedded text subtitle tracks;
 - reports unsupported embedded bitmap/non-text subtitle tracks rather than dropping them silently;
 - consumes an exact reviewed `audio-analysis-transcription-wasm` revision for WebGPU transcription, matching the reusable browser capability consumed by Native WhisperX instead of copying Native WhisperX product logic or implementing another Whisper runtime;
+- keeps the user-selected Reference Video attached to its file input while the file-backed workflow is active;
+- keeps the direct browser decode as the fast path; when the browser reports a whole-file read/allocation failure, it falls back to the upstream bounded MediaStream transcription session fed from silent local media playback instead of surfacing the stale-file permission error;
 - converts only validated timed browser transcription segments into a generated Subtitle Track, then uses the existing Rust/WASM subtitle serialization path to create its editable SRT source document;
 - projects Rust-owned cue timing/text into React for preview, timeline navigation, and downloads;
 - keeps browser alignment, diarization, and the full Native WhisperX translation/workflow surface outside Pages; those capabilities continue to use the native/backend boundary documented in ADR 0003.
@@ -43,6 +45,6 @@ Reference-video memory use is no longer proportional to the full media file. Lar
 
 Embedded extraction is text-first. MP4 tx3g/wvtt/stpp and Matroska UTF-8/WebVTT/ASS/SSA/USF are decoded; bitmap formats such as PGS and VobSub remain visible as unsupported tracks until an explicit OCR/rendering slice owns them.
 
-Browser generation is intentionally narrower than the host-native generation workflow: it requires WebGPU and browser-decodable media, downloads/caches its model through the reviewed upstream browser adapter, and fails closed rather than falling back to a server, Python, or CPU inference path. Static build validation proves the pinned integration contract but is not evidence that a particular deployed browser/GPU completed real inference.
+Browser generation is intentionally narrower than the host-native generation workflow: it requires WebGPU and browser-decodable media, downloads/caches its model through the reviewed upstream browser adapter, and fails closed rather than falling back to a server, Python, or CPU inference path. The direct browser decode remains the normal fast path. If that path fails specifically because the browser can no longer reread or allocate the selected file, media playback becomes the acquisition clock for the bounded fallback, so recovery cannot complete faster than the media duration. Static build validation proves the pinned integration contract but is not evidence that a particular deployed browser/GPU completed real inference.
 
 The existing Vite/native application remains intact and continues to be the canonical surface for alignment, diarization, translation, native model/runtime selection, and other host-native generation capabilities.
