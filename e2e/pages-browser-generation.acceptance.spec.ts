@@ -33,7 +33,10 @@ globalThis.__subtitleMergerBrowserTranscription = {
       ...(globalThis.__subtitleMergerGenerationEvidence ?? {}),
       blobPathUsed: true,
     };
-    throw new Error("whole-file blob transcription must not be used for a Reference Video");
+    throw new DOMException(
+      "The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.",
+      "NotReadableError",
+    );
   },
   async createBrowserMediaStreamTranscriptionSession(stream, options = {}) {
     const audioTracks = stream.getAudioTracks();
