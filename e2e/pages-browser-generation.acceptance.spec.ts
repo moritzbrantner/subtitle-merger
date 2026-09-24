@@ -118,7 +118,7 @@ test('keeps the selected Reference Video attached to its file input', async ({ p
   await expect(page.getByRole('button', { name: /Generate subtitles/ })).toBeEnabled()
 })
 
-test('generates from a bounded browser media stream instead of rereading the whole video File', async ({ page }) => {
+test('falls back to a bounded browser media stream when whole-video reading fails', async ({ page }) => {
   await prepareBrowserRuntime(page)
   await page.goto('/')
 
