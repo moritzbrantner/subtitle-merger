@@ -1,5 +1,5 @@
-import type { Track } from "./types";
 import type { BrowserTranscriptionResult } from "./browser-transcription";
+import type { Track } from "./types";
 
 export type GeneratedVideoIdentity = {
   name: string;
