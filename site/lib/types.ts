@@ -69,7 +69,7 @@ export type Track = {
   language: string;
   format: string;
   codec: string;
-  origin: "embedded" | "file";
+  origin: "embedded" | "file" | "generated";
   forced: boolean;
   filename?: string;
   enabled: boolean;
