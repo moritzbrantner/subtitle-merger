@@ -131,6 +131,25 @@ function trackOriginLabel(track: Track) {
   return track.filename ?? "Imported subtitle file";
 }
 
+function browserGenerationTitle(support: BrowserTranscriptionSupport | undefined) {
+  if (!support) {
+    return "Checking WebGPU…";
+  }
+  return support.available ? "Generate with WebGPU" : "WebGPU unavailable";
+}
+
+function browserGenerationDescription(
+  support: BrowserTranscriptionSupport | undefined,
+) {
+  if (!support) {
+    return "Checking whether this browser can run local transcription.";
+  }
+  if (!support.available) {
+    return support.reason;
+  }
+  return "Runs locally in this browser; model assets are cached after first use.";
+}
+
 function formatByteCount(bytes: number) {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -1031,20 +1050,8 @@ export function SubtitleWorkbench() {
             onClick={() => void handleGenerateSubtitles()}
           >
             <span className="file-target-label">Generate subtitles</span>
-            <strong>
-              {browserTranscriptionSupport?.available === true
-                ? "Generate with WebGPU"
-                : browserTranscriptionSupport?.available === false
-                  ? "WebGPU unavailable"
-                  : "Checking WebGPU…"}
-            </strong>
-            <span>
-              {browserTranscriptionSupport?.available === true
-                ? "Runs locally in this browser; model assets are cached after first use."
-                : browserTranscriptionSupport?.available === false
-                  ? browserTranscriptionSupport.reason
-                  : "Checking whether this browser can run local transcription."}
-            </span>
+            <strong>{browserGenerationTitle(browserTranscriptionSupport)}</strong>
+            <span>{browserGenerationDescription(browserTranscriptionSupport)}</span>
           </button>
         </div>
 
