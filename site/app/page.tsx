@@ -8,7 +8,7 @@ export default function Home() {
           <p className="eyebrow">Subtitle Merger · browser lab</p>
           <h1>Inspect, generate, and merge subtitle tracks without uploading your media.</h1>
           <p className="lede">
-            Select a reference video, add existing subtitle files, or generate a timed source track locally with browser WebGPU. Rust/WASM remains authoritative for subtitle documents, editing, and exports.
+            Select a reference video, add existing subtitle files, or generate a timed track locally in your browser. Edit, align, compare, and export the result.
           </p>
         </div>
         <a className="repo-link" href="https://github.com/moritzbrantner/subtitle-merger">
