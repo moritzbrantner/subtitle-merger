@@ -6,9 +6,9 @@ export default function Home() {
       <header className="site-header">
         <div>
           <p className="eyebrow">Subtitle Merger · browser lab</p>
-          <h1>Inspect and merge subtitle tracks without uploading your media.</h1>
+          <h1>Inspect, generate, and merge subtitle tracks without uploading your media.</h1>
           <p className="lede">
-            Select one reference video and as many SRT, WebVTT, ASS, or SSA files as you need. Rust compiled to WebAssembly inspects the container and extracts embedded text subtitle tracks locally.
+            Select a reference video, add existing subtitle files, or generate a timed track locally in your browser. Edit, align, compare, and export the result.
           </p>
         </div>
         <a className="repo-link" href="https://github.com/moritzbrantner/subtitle-merger">

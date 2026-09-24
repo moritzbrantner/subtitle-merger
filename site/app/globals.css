@@ -154,7 +154,7 @@ input:focus-visible,
 
 .input-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--border);
 }
 
@@ -176,6 +176,22 @@ input:focus-visible,
 
 .file-target:hover {
   background: var(--surface-raised);
+}
+
+button.file-target {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  text-align: left;
+}
+
+button.file-target:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.file-target:disabled:hover {
+  background: var(--surface);
 }
 
 .file-target input {

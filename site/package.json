@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "bun test ./lib/document-history.test.mjs ./lib/timeline-edit.test.mjs ./lib/quality-view.test.mjs ./lib/drift-view.test.mjs",
+    "test": "bun test ./lib/document-history.test.mjs ./lib/timeline-edit.test.mjs ./lib/quality-view.test.mjs ./lib/drift-view.test.mjs ./lib/browser-generation.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

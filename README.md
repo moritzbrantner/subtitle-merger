@@ -1,6 +1,6 @@
 # Subtitle Merger
 
-Rust backend and React + TypeScript editor for loading video/subtitle siblings, generating subtitles with Native WhisperX, editing them on a timeline, and exporting the edited result. The repository also ships a static Next.js GitHub Pages surface that keeps uploaded media browser-local and uses Rust compiled to WebAssembly for subtitle parsing and embedded-track extraction.
+Rust backend and React + TypeScript editor for loading video/subtitle siblings, generating subtitles with Native WhisperX, editing them on a timeline, and exporting the edited result. The repository also ships a static Next.js GitHub Pages surface that keeps selected media browser-local, uses Rust compiled to WebAssembly for subtitle parsing and embedded-track extraction, and can generate a timed source subtitle track with the same reusable WebGPU transcription capability consumed by Native WhisperX's browser surface.
 
 ## Start the local application
 
@@ -18,7 +18,7 @@ The model cache defaults to the OS cache directory under `subtitle-merger/models
 
 The local editor submits the opened video's opaque media ID when generating. It does not fetch the entire local video into the browser and upload it back to the same backend. The legacy multipart upload API remains available for small external clients; its existing extractor limits are not the large-file path.
 
-**Speaker identification is not compiled into the current Native WhisperX feature set.** Its checkbox is disabled with an explanation, and the backend rejects unsupported requests before starting a job. The static GitHub Pages app remains browser-local and does not perform native AI generation; use `bun start` for that workflow.
+**Speaker identification is not compiled into the current Native WhisperX feature set.** Its checkbox is disabled with an explanation, and the backend rejects unsupported requests before starting a job. The static GitHub Pages app can generate a transcription-only source track through the pinned browser WebGPU adapter also consumed by Native WhisperX. Browser generation has no server, Python, or CPU fallback; use `bun start` for alignment, translation, and the full host-native generation workflow.
 
 ### Startup options and troubleshooting
 
@@ -69,10 +69,13 @@ The static `site/` application has its own dependency install. Install the brows
 bun install --cwd site
 rustup target add wasm32-unknown-unknown
 bun run build:web-wasm
+bun run prepare:browser-transcription
 bun run --cwd site dev
 ```
 
-The static site accepts one Reference Video plus multiple SRT, WebVTT, ASS, or SSA files. The Rust/WASM boundary parses uploaded subtitle files and inspects MP4/MOV and Matroska/WebM containers for embedded text subtitle tracks. Supported embedded text codecs are extracted into ordinary browser-local Subtitle Tracks; bitmap codecs such as PGS and VobSub are reported explicitly rather than silently ignored.
+The static site accepts one Reference Video plus multiple SRT, WebVTT, ASS, or SSA files. It can also generate a timed source Subtitle Track from the Reference Video when WebGPU and browser media decoding are available. The generation path pins the same `audio-analysis-transcription-wasm` browser capability currently consumed by Native WhisperX, while Rust/WASM remains authoritative for subtitle serialization, parsing, editing, merging, and embedded-track extraction. Supported embedded text codecs are extracted into ordinary browser-local Subtitle Tracks; bitmap codecs such as PGS and VobSub are reported explicitly rather than silently ignored.
+
+The browser transcription adapter downloads its Whisper model assets on first use and reuses the browser cache afterward. It has no application-server, Python, or CPU inference fallback. Alignment, diarization, translation, and broader Native WhisperX Workflow Composition are intentionally not approximated on the Pages surface.
 
 Uploaded subtitle files retain their source document in the browser. Cue timing and source-text edits are applied by Rust and reserialized through the lossless subtitle document model before the browser replaces the track, preserving supported SRT identifiers/settings, WebVTT metadata blocks/settings, and ASS/SSA script/style/event metadata. Failed edits leave the previous document intact. Embedded tracks remain read-only until their extracted rich source document is retained by a later slice.
 
@@ -82,6 +85,7 @@ Build the exact static export used by GitHub Pages with:
 
 ```sh
 bun run build:web-wasm
+bun run prepare:browser-transcription
 bun run --cwd site build
 node scripts/check-pages.mjs
 ```
@@ -108,7 +112,7 @@ bun run build
 
 Startup tests use injected tool downloads and temporary caches; they cover cold setup, cache reuse with downloads disabled, partial cleanup, retry and invalid responses without downloading large binaries in ordinary CI. Generation tests cover automatic-download configuration, retained/replayed progress, terminal state, polling recovery, failure/retry and registered media IDs. Browser acceptance simulates model lifecycle events rather than downloading real AI models. These tests do not substitute for a real cold-cache native inference run on a supported host.
 
-The `Pages` workflow separately compiles `web-wasm/` to `wasm32-unknown-unknown`, typechecks and statically exports `site/`, verifies the generated WASM asset, and deploys only from `main`.
+The `Pages` workflow separately compiles `web-wasm/` to `wasm32-unknown-unknown`, prepares and contract-checks the exact pinned browser transcription adapter, runs the Pages helper tests, typechecks and statically exports `site/`, verifies the generated assets, and deploys only from `main`.
 
 ## End-to-end tests
 

@@ -22,6 +22,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Generated browser runtime assets
+/site/public/browser-transcription-bridge.js
+/site/public/vendor/
+
 # Generated end-to-end media fixtures
 /e2e/fixtures/*.mp4
 /e2e/fixtures/*.webm

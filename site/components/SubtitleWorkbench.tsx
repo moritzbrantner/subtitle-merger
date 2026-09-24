@@ -28,6 +28,12 @@ import type {
   Track,
   VideoInspection,
 } from "../lib/types";
+import { generatedSubtitleTrack } from "../lib/browser-generation";
+import {
+  inspectBrowserTranscriptionSupport,
+  transcribeReferenceVideo,
+  type BrowserTranscriptionSupport,
+} from "../lib/browser-transcription";
 import {
   analyzeSubtitleQuality,
   correctSubtitleDrift,
@@ -115,6 +121,35 @@ function sourceMimeType(format: string) {
     : "text/plain;charset=utf-8";
 }
 
+function trackOriginLabel(track: Track) {
+  if (track.origin === "embedded") {
+    return "Embedded track";
+  }
+  if (track.origin === "generated") {
+    return track.filename ? `Generated · ${track.filename}` : "Generated subtitle";
+  }
+  return track.filename ?? "Imported subtitle file";
+}
+
+function browserGenerationTitle(support: BrowserTranscriptionSupport | undefined) {
+  if (!support) {
+    return "Checking WebGPU…";
+  }
+  return support.available ? "Generate with WebGPU" : "WebGPU unavailable";
+}
+
+function browserGenerationDescription(
+  support: BrowserTranscriptionSupport | undefined,
+) {
+  if (!support) {
+    return "Checking whether this browser can run local transcription.";
+  }
+  if (!support.available) {
+    return support.reason;
+  }
+  return "Runs locally in this browser; model assets are cached after first use.";
+}
+
 function formatByteCount(bytes: number) {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -169,6 +204,9 @@ export function SubtitleWorkbench() {
   const [qualityReport, setQualityReport] = useState<SubtitleQualityReport>();
   const [qualityError, setQualityError] = useState("");
   const [qualityBusy, setQualityBusy] = useState(false);
+  const [browserTranscriptionSupport, setBrowserTranscriptionSupport] =
+    useState<BrowserTranscriptionSupport>();
+  const [generatingSubtitles, setGeneratingSubtitles] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -180,6 +218,18 @@ export function SubtitleWorkbench() {
 
   useEffect(() => {
     return () => inspectionAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void inspectBrowserTranscriptionSupport().then((support) => {
+      if (active) {
+        setBrowserTranscriptionSupport(support);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const durationMs = useMemo(
@@ -400,6 +450,57 @@ export function SubtitleWorkbench() {
       setSelectedTrackId(imported[0].id);
     }
     setBusy("");
+  }
+
+  async function handleGenerateSubtitles() {
+    if (
+      !videoFile
+      || browserTranscriptionSupport?.available !== true
+      || generatingSubtitles
+    ) {
+      return;
+    }
+
+    const sourceVideo = videoFile;
+    setGeneratingSubtitles(true);
+    setBusy("Preparing browser transcription…");
+    setError("");
+
+    try {
+      const transcript = await transcribeReferenceVideo(sourceVideo, (progress) => {
+        if (progress.message) {
+          setBusy(progress.message);
+        }
+      });
+      const generated = generatedSubtitleTrack(transcript, {
+        name: sourceVideo.name,
+        size: sourceVideo.size,
+        lastModified: sourceVideo.lastModified,
+      });
+
+      setBusy("Serializing generated subtitles with Rust/WASM…");
+      const serialized = await mergeTracks([generated], "srt");
+      const track: Track = {
+        ...generated,
+        sourceBytes: new TextEncoder().encode(serialized.content),
+      };
+      const generatedIds = new Set([track.id]);
+      setTracks((current) => [
+        ...current.filter((candidate) => candidate.id !== track.id),
+        track,
+      ]);
+      clearTrackBrowserState(generatedIds);
+      setSelectedTrackId(track.id);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Browser subtitle generation failed.",
+      );
+    } finally {
+      setGeneratingSubtitles(false);
+      setBusy("");
+    }
   }
 
   function toggleTrack(id: string) {
@@ -916,15 +1017,42 @@ export function SubtitleWorkbench() {
             <span className="file-target-label">Reference video</span>
             <strong>{videoFile?.name ?? "Choose one video file"}</strong>
             <span>MP4/MOV and Matroska/WebM can be inspected for embedded text subtitles.</span>
-            <input type="file" accept={videoAccept} onChange={handleVideoChange} />
+            <input
+              type="file"
+              accept={videoAccept}
+              disabled={generatingSubtitles}
+              onChange={handleVideoChange}
+            />
           </label>
 
           <label className="file-target">
             <span className="file-target-label">Subtitle files</span>
             <strong>Add SRT, WebVTT, ASS, or SSA</strong>
             <span>Select several files at once; importing the same file again replaces that track.</span>
-            <input type="file" accept={subtitleAccept} multiple onChange={handleSubtitleChange} />
+            <input
+              type="file"
+              accept={subtitleAccept}
+              multiple
+              disabled={generatingSubtitles}
+              onChange={handleSubtitleChange}
+            />
           </label>
+
+          <button
+            type="button"
+            className="file-target browser-generate-target"
+            disabled={
+              !videoFile
+              || Boolean(busy)
+              || generatingSubtitles
+              || browserTranscriptionSupport?.available !== true
+            }
+            onClick={() => void handleGenerateSubtitles()}
+          >
+            <span className="file-target-label">Generate subtitles</span>
+            <strong>{browserGenerationTitle(browserTranscriptionSupport)}</strong>
+            <span>{browserGenerationDescription(browserTranscriptionSupport)}</span>
+          </button>
         </div>
 
         {busy ? <p className="status-line">{busy}</p> : null}
@@ -1080,7 +1208,7 @@ export function SubtitleWorkbench() {
               <p className="eyebrow">Track detail</p>
               <h2 id="detail-heading">{selectedTrack.title}</h2>
               <p className="track-meta">
-                {selectedTrack.origin === "embedded" ? "Embedded track" : selectedTrack.filename} · {selectedTrack.format}
+                {trackOriginLabel(selectedTrack)} · {selectedTrack.format}
                 {selectedTrack.language !== "und" ? ` · ${selectedTrack.language}` : ""}
                 {selectedTrack.forced ? " · forced" : ""}
               </p>
