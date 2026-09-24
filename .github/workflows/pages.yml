@@ -6,6 +6,7 @@ on:
       - "site/**"
       - "web-wasm/**"
       - "scripts/build-web-wasm.mjs"
+      - "scripts/prepare-browser-transcription.mjs"
       - "scripts/check-pages.mjs"
       - "package.json"
       - ".github/workflows/pages.yml"
@@ -15,6 +16,7 @@ on:
       - "site/**"
       - "web-wasm/**"
       - "scripts/build-web-wasm.mjs"
+      - "scripts/prepare-browser-transcription.mjs"
       - "scripts/check-pages.mjs"
       - "package.json"
       - ".github/workflows/pages.yml"
@@ -50,6 +52,8 @@ jobs:
         run: cargo test --manifest-path web-wasm/Cargo.toml --locked
       - name: Build Rust WebAssembly asset
         run: bun run build:web-wasm
+      - name: Prepare pinned browser transcription runtime
+        run: bun run prepare:browser-transcription
       - name: Install Pages dependencies
         working-directory: site
         run: bun install --frozen-lockfile
