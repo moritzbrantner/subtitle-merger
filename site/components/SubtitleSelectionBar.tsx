@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 
 import {
   clampPlacementPercent,
@@ -21,9 +21,16 @@ function PercentInput({
   onCommit,
 }: PercentInputProps) {
   const [draft, setDraft] = useState<string>();
+  const cancelRef = useRef(false);
 
   function commit() {
-    if (draft === undefined) {
+    if (cancelRef.current) {
+      cancelRef.current = false;
+      setDraft(undefined);
+      return;
+    }
+    if (draft === undefined || draft.trim() === "") {
+      setDraft(undefined);
       return;
     }
     const parsed = Number(draft);
@@ -41,7 +48,7 @@ function PercentInput({
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      setDraft(String(value));
+      cancelRef.current = true;
       event.currentTarget.blur();
     }
   }
@@ -57,7 +64,10 @@ function PercentInput({
         inputMode="decimal"
         disabled={disabled}
         value={draft ?? String(Number(value.toFixed(2)))}
-        onFocus={() => setDraft(String(Number(value.toFixed(2))))}
+        onFocus={() => {
+          cancelRef.current = false;
+          setDraft(String(Number(value.toFixed(2))));
+        }}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={handleKeyDown}
