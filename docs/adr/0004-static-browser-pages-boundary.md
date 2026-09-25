@@ -23,7 +23,7 @@ The Pages surface:
 - reports unsupported embedded bitmap/non-text subtitle tracks rather than dropping them silently;
 - consumes an exact reviewed `audio-analysis-transcription-wasm` revision for WebGPU transcription, matching the reusable browser capability consumed by Native WhisperX instead of copying Native WhisperX product logic or implementing another Whisper runtime;
 - keeps the user-selected Reference Video attached to its file input while the file-backed workflow is active;
-- exposes the reviewed upstream WebGPU Whisper model catalog to the user, defaults to Whisper Tiny, and passes the selected model ID back to `audio-analysis`; Subtitle Merger does not duplicate model validation/loading or create a live MediaStream capture pipeline;
+- exposes the reviewed upstream WebGPU Whisper model catalog to the user, defaults to Whisper Tiny, and passes the selected model ID back to `audio-analysis`; the upstream adapter validates IDs and disposes superseded idle WebGPU pipelines, while Subtitle Merger does not duplicate model lifecycle logic or create a live MediaStream capture pipeline;
 - converts only validated timed browser transcription segments into a generated Subtitle Track, then uses the existing Rust/WASM subtitle serialization path to create its editable SRT source document;
 - projects Rust-owned cue timing/text into React for preview, timeline navigation, and downloads;
 - keeps browser alignment, diarization, and the full Native WhisperX translation/workflow surface outside Pages; those capabilities continue to use the native/backend boundary documented in ADR 0003.
