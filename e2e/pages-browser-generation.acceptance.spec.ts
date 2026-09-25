@@ -255,18 +255,27 @@ test('edits subtitles directly in the video and scrubs the attached translation 
   await cue.getByRole('button').dblclick()
   const textEditor = page.getByRole('textbox', { name: /Edit pages-editor\.en, cue 1/ })
   await expect(textEditor).toBeVisible()
-  await textEditor.fill('Edited directly on video')
-  await textEditor.press('Control+Enter')
-  await expect(cue).toContainText('Edited directly on video')
 
   const scrubber = page.getByTestId('timeline-scrubber')
   const scrubberBounds = await scrubber.boundingBox()
   expect(scrubberBounds).not.toBeNull()
   await page.mouse.click(
+    scrubberBounds!.x + scrubberBounds!.width * 0.95,
+    scrubberBounds!.y + scrubberBounds!.height / 2,
+  )
+  await expect.poll(async () => Number(await scrubber.getAttribute('aria-valuenow'))).toBeGreaterThan(1_800)
+  await expect(textEditor).toBeVisible()
+
+  await page.mouse.click(
     scrubberBounds!.x + scrubberBounds!.width * 0.55,
     scrubberBounds!.y + scrubberBounds!.height / 2,
   )
   await expect.poll(async () => Number(await scrubber.getAttribute('aria-valuenow'))).toBeGreaterThan(800)
+  await expect(textEditor).toBeVisible()
+
+  await textEditor.fill('Edited directly on video')
+  await textEditor.press('Control+Enter')
+  await expect(cue).toContainText('Edited directly on video')
   await expect.poll(async () =>
     page.locator('video').evaluate((video) => (video as HTMLVideoElement).currentTime),
   ).toBeGreaterThan(0.8)
