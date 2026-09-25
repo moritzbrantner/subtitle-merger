@@ -270,4 +270,12 @@ test('edits subtitles directly in the video and scrubs the attached translation 
   await expect.poll(async () =>
     page.locator('video').evaluate((video) => (video as HTMLVideoElement).currentTime),
   ).toBeGreaterThan(0.8)
+
+  if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
+    await mkdir('.artifacts', { recursive: true })
+    await page.screenshot({
+      path: '.artifacts/direct-subtitle-editor.png',
+      fullPage: true,
+    })
+  }
 })
