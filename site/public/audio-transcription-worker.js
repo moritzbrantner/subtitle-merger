@@ -161,7 +161,17 @@ async function transcribeFile(file, wasmUrl, modelId) {
           throw decoderFailure;
         }
         const result = await session.flush();
-        self.postMessage({ type: "result", result });
+        self.postMessage({
+          type: "result",
+          result: {
+            ...result,
+            attributes: {
+              ...(result.attributes ?? {}),
+              mediaAcquisition: "wasm-range",
+              audioDecode: "webcodecs",
+            },
+          },
+        });
         return;
       }
 
