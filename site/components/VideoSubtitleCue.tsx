@@ -157,6 +157,9 @@ export function VideoSubtitleCue({
         return;
     }
 
+    if (!next) {
+      return;
+    }
     event.preventDefault();
     onSelect();
     onMove(clampCuePlacement(next));
