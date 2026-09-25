@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const audioAnalysisRevision = "367bcb0c7393dd92bc7aaa7ce808e5ef9590bf6d";
+const audioAnalysisRevision = "bbb978f20ee2e9069d435b8b374980eaf2cc7b5d";
 const audioAnalysisRepository = "https://github.com/moritzbrantner/audio-analysis.git";
 const sourcePath = "packages/audio-analysis-transcription-wasm/index.js";
 const publicDirectory = resolve(repositoryRoot, "site", "public");
@@ -35,6 +35,10 @@ try {
     "export function browserTranscriptionCapabilities()",
     "export async function supportsBrowserTranscription()",
     "export async function transcribeAudioBlob",
+    "export function createBrowserDecodedAudioTranscriptionSession",
+    "export function createBrowserPcmResampler",
+    '"WebCodecs AudioData stream"',
+    "decodedAudioAdapter: true",
     'id: "onnx-community/whisper-tiny"',
     'id: "onnx-community/whisper-base"',
     'id: "onnx-community/whisper-small"',
