@@ -35,6 +35,7 @@ type BrowserTranscriptionCapabilities = {
     transcription: boolean;
     timedSegments: boolean;
     boundedPcmStreaming?: boolean;
+    decodedAudioAdapter?: boolean;
     mediaStreamAdapter?: boolean;
   };
   fallbacks: {
@@ -44,20 +45,10 @@ type BrowserTranscriptionCapabilities = {
   };
 };
 
-type BrowserTranscriptionOptions = {
-  source: string;
-  modelId: string;
-  onProgress?: (progress: BrowserTranscriptionProgress) => void;
-};
-
 type BrowserTranscriptionRuntime = {
   browserTranscriptionCapabilities: () => BrowserTranscriptionCapabilities;
   browserTranscriptionModels: () => BrowserTranscriptionModel[];
   supportsBrowserTranscription: () => Promise<boolean>;
-  transcribeAudioBlob: (
-    source: Blob,
-    options: BrowserTranscriptionOptions,
-  ) => Promise<BrowserTranscriptionResult>;
 };
 
 type RuntimeWindow = typeof window & {
@@ -120,7 +111,6 @@ function validateRuntime(runtime: BrowserTranscriptionRuntime | undefined) {
     || typeof runtime.browserTranscriptionCapabilities !== "function"
     || typeof runtime.browserTranscriptionModels !== "function"
     || typeof runtime.supportsBrowserTranscription !== "function"
-    || typeof runtime.transcribeAudioBlob !== "function"
   ) {
     throw new Error("The browser transcription runtime did not expose its expected capability surface.");
   }
@@ -130,6 +120,7 @@ function validateRuntime(runtime: BrowserTranscriptionRuntime | undefined) {
     capabilities.requiredAcceleration !== "webgpu"
     || capabilities.features.transcription !== true
     || capabilities.features.timedSegments !== true
+    || capabilities.features.decodedAudioAdapter !== true
     || capabilities.fallbacks.server !== false
     || capabilities.fallbacks.python !== false
     || capabilities.fallbacks.cpu !== false
@@ -174,13 +165,6 @@ async function loadRuntime() {
   return runtimePromise;
 }
 
-function isLocalFileReadFailure(error: unknown) {
-  return (
-    error instanceof DOMException
-    && (error.name === "NotReadableError" || error.name === "NotFoundError")
-  );
-}
-
 function localFileReadError() {
   return new Error(
     "The browser could not read the selected Reference Video for local Whisper transcription. Re-select the Reference Video and retry.",
@@ -192,6 +176,16 @@ export async function inspectBrowserTranscriptionSupport(): Promise<BrowserTrans
     const runtime = await loadRuntime();
     const capabilities = runtime.browserTranscriptionCapabilities();
     const models = validateModelCatalog(capabilities);
+    if (
+      typeof AudioDecoder !== "function"
+      || typeof EncodedAudioChunk !== "function"
+      || typeof Worker !== "function"
+    ) {
+      return {
+        available: false,
+        reason: "WebCodecs audio decoding is not available in this browser.",
+      };
+    }
     const available = await runtime.supportsBrowserTranscription();
     if (!available) {
       return {
@@ -213,6 +207,11 @@ export async function inspectBrowserTranscriptionSupport(): Promise<BrowserTrans
   }
 }
 
+type BrowserTranscriptionWorkerMessage =
+  | { type: "result"; result: BrowserTranscriptionResult }
+  | { type: "progress"; progress: BrowserTranscriptionProgress }
+  | { type: "error"; message: string; name?: string };
+
 export async function transcribeReferenceVideo(
   file: File,
   modelId: string,
@@ -226,17 +225,58 @@ export async function transcribeReferenceVideo(
   if (!(await runtime.supportsBrowserTranscription())) {
     throw new Error("WebGPU is required for browser subtitle generation.");
   }
-
-  try {
-    return await runtime.transcribeAudioBlob(file, {
-      source: file.name,
-      modelId,
-      ...(onProgress ? { onProgress } : {}),
-    });
-  } catch (error) {
-    if (isLocalFileReadFailure(error)) {
-      throw localFileReadError();
-    }
-    throw error;
+  if (
+    typeof AudioDecoder !== "function"
+    || typeof EncodedAudioChunk !== "function"
+    || typeof Worker !== "function"
+  ) {
+    throw new Error("Browser subtitle generation requires WebCodecs audio decoding.");
   }
+
+  return new Promise<BrowserTranscriptionResult>((resolve, reject) => {
+    const worker = new Worker(
+      `${basePath()}/audio-transcription-worker.js`,
+      { type: "module" },
+    );
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      worker.terminate();
+    };
+
+    worker.onmessage = (event: MessageEvent<BrowserTranscriptionWorkerMessage>) => {
+      const message = event.data;
+      if (message.type === "progress") {
+        onProgress?.(message.progress);
+        return;
+      }
+      if (message.type === "result") {
+        finish();
+        resolve(message.result);
+        return;
+      }
+      if (message.type === "error") {
+        finish();
+        if (message.name === "NotReadableError" || message.name === "NotFoundError") {
+          reject(localFileReadError());
+        } else {
+          reject(new Error(message.message || "Browser subtitle generation failed."));
+        }
+      }
+    };
+    worker.onerror = (event) => {
+      finish();
+      reject(new Error(event.message || "The browser transcription worker failed."));
+    };
+    worker.postMessage({
+      type: "transcribe",
+      file,
+      modelId,
+      wasmUrl: `${basePath()}/subtitle_merger_web_wasm.wasm`,
+    });
+  });
 }
