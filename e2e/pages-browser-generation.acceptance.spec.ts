@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const fixturePath = fileURLToPath(new URL('./fixtures/acceptance-video.webm', import.meta.url))
@@ -130,7 +130,7 @@ test('transcribes the selected Reference Video as one finite local file', async 
   )
   expect(evidence).toEqual({
     blobPathUsed: true,
-    sourceSize: 34_617,
+    sourceSize: (await stat(fixturePath)).size,
   })
 
   if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
@@ -174,6 +174,6 @@ test('surfaces a finite-file read failure instead of switching to streaming', as
   )
   expect(evidence).toEqual({
     blobPathUsed: true,
-    sourceSize: 34_617,
+    sourceSize: (await stat(fixturePath)).size,
   })
 })
