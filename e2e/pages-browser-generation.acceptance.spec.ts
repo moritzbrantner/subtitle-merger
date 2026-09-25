@@ -11,6 +11,23 @@ globalThis.__subtitleMergerBrowserTranscription = {
       runtime: "acceptance-webgpu",
       requiredAcceleration: "webgpu",
       modelId: "onnx-community/whisper-tiny",
+      models: [
+        {
+          id: "onnx-community/whisper-tiny",
+          label: "Whisper Tiny",
+          description: "Fastest and lowest-memory browser option.",
+        },
+        {
+          id: "onnx-community/whisper-base",
+          label: "Whisper Base",
+          description: "Balanced browser accuracy and resource use.",
+        },
+        {
+          id: "onnx-community/whisper-small",
+          label: "Whisper Small",
+          description: "Higher accuracy with a much larger download and memory footprint.",
+        },
+      ],
       modelProvisioning: "acceptance-fixture",
       features: {
         transcription: true,
@@ -23,6 +40,9 @@ globalThis.__subtitleMergerBrowserTranscription = {
       },
     };
   },
+  browserTranscriptionModels() {
+    return this.browserTranscriptionCapabilities().models;
+  },
   async supportsBrowserTranscription() {
     return true;
   },
@@ -31,6 +51,7 @@ globalThis.__subtitleMergerBrowserTranscription = {
       ...(globalThis.__subtitleMergerGenerationEvidence ?? {}),
       blobPathUsed: true,
       sourceSize: source.size,
+      selectedModelId: options.modelId,
     };
     options.onProgress?.({
       stage: "model",
@@ -59,7 +80,7 @@ globalThis.__subtitleMergerBrowserTranscription = {
       source: "acceptance-video.webm",
       attributes: {
         runtime: "acceptance-webgpu",
-        modelId: "onnx-community/whisper-tiny",
+        modelId: options.modelId,
       },
     };
   },
@@ -107,6 +128,9 @@ test('keeps the selected Reference Video attached to its file input', async ({ p
     const fileInput = element as HTMLInputElement
     return fileInput.files?.length ?? 0
   })).toBe(1)
+  const modelSelect = page.getByRole('combobox', { name: 'Whisper model' })
+  await expect(modelSelect).toHaveValue('onnx-community/whisper-tiny')
+  await expect(modelSelect.locator('option')).toHaveCount(3)
   await expect(page.getByRole('button', { name: /Generate subtitles/ })).toBeEnabled()
 })
 
@@ -116,7 +140,12 @@ test('transcribes the selected Reference Video as one finite local file', async 
 
   const input = page.locator('input[type="file"]').first()
   await input.setInputFiles(fixturePath)
+  const modelSelect = page.getByRole('combobox', { name: 'Whisper model' })
+  await modelSelect.selectOption('onnx-community/whisper-base')
+  await expect(page.getByText('Balanced browser accuracy and resource use.')).toBeVisible()
+
   const generate = page.getByRole('button', { name: /Generate subtitles/ })
+  await expect(generate).toContainText('Generate with Whisper Base')
   await expect(generate).toBeEnabled()
   await generate.click()
 
@@ -128,12 +157,14 @@ test('transcribes the selected Reference Video as one finite local file', async 
       __subtitleMergerGenerationEvidence?: {
         blobPathUsed?: boolean
         sourceSize?: number
+        selectedModelId?: string
       }
     }).__subtitleMergerGenerationEvidence,
   )
   expect(evidence).toEqual({
     blobPathUsed: true,
     sourceSize: (await stat(fixturePath)).size,
+    selectedModelId: 'onnx-community/whisper-base',
   })
 
   if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
@@ -172,12 +203,14 @@ test('surfaces a finite-file read failure instead of switching to streaming', as
       __subtitleMergerGenerationEvidence?: {
         blobPathUsed?: boolean
         sourceSize?: number
+        selectedModelId?: string
       }
     }).__subtitleMergerGenerationEvidence,
   )
   expect(evidence).toEqual({
     blobPathUsed: true,
     sourceSize: (await stat(fixturePath)).size,
+    selectedModelId: 'onnx-community/whisper-tiny',
   })
 })
 
