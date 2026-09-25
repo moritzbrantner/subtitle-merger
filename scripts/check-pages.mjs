@@ -27,9 +27,7 @@ for (const required of [
   "export function browserTranscriptionCapabilities()",
   "export async function supportsBrowserTranscription()",
   "export async function transcribeAudioBlob",
-  "export async function createBrowserMediaStreamTranscriptionSession",
-  "boundedPcmStreaming: true",
-  "mediaStreamAdapter: true",
+  'const DEFAULT_BROWSER_MODEL_ID = "onnx-community/whisper-tiny";',
   'requiredAcceleration: "webgpu"',
   "server: false",
   "python: false",
@@ -52,4 +50,4 @@ const wasm = await stat(wasmPath);
 if (wasm.size < 1000) {
   throw new Error("Rust WebAssembly asset is unexpectedly small.");
 }
-console.log(`Verified static Pages export (${wasm.size} byte WASM asset plus browser transcription runtime).`);
+console.log(`Verified static Pages export (${wasm.size} byte WASM asset plus finite-file Whisper Tiny transcription runtime).`);
