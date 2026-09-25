@@ -45,6 +45,7 @@ label {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
+select:focus-visible,
 .file-target:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -216,6 +217,78 @@ button.file-target:disabled:hover {
 .file-target span:last-of-type {
   color: var(--muted);
   line-height: 1.45;
+}
+
+.browser-generation-panel {
+  min-height: 150px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.browser-model-control {
+  display: grid;
+  gap: 7px;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.browser-model-control select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.browser-model-control select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.browser-model-description,
+.browser-generate-target span:last-of-type {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.browser-model-description {
+  font-size: 0.82rem;
+}
+
+.browser-generate-target {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 18px 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.browser-generate-target:hover {
+  background: var(--surface-raised);
+}
+
+.browser-generate-target:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.browser-generate-target:disabled:hover {
+  background: transparent;
+}
+
+.browser-generate-target strong {
+  font-size: 1.05rem;
 }
 
 .status-line,
@@ -698,6 +771,11 @@ button.file-target:disabled:hover {
   }
 
   .file-target + .file-target {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .browser-generation-panel {
     border-left: 0;
     border-top: 1px solid var(--border);
   }
