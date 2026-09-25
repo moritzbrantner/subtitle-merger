@@ -131,19 +131,9 @@ async function loadRuntime() {
 }
 
 function isLocalFileReadFailure(error: unknown) {
-  if (error instanceof DOMException) {
-    return error.name === "NotReadableError" || error.name === "NotFoundError";
-  }
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
   return (
-    message.includes("array buffer")
-    || message.includes("arraybuffer")
-    || message.includes("allocation failed")
-    || message.includes("could not be read")
+    error instanceof DOMException
+    && (error.name === "NotReadableError" || error.name === "NotFoundError")
   );
 }
 
