@@ -13,4 +13,6 @@ mod drift;
 mod quality;
 // Deterministic track ordering, timing transforms, overlap handling, and merged serialization are Rust-owned.
 mod merge;
+// Browser-local transcription reuses the range pull protocol for encoded audio demux.
+mod audio_demux;
 mod range_inspection;

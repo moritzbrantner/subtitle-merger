@@ -28,7 +28,7 @@ _Avoid_: video track, cue track
 A session-scoped request that uploads one video and produces source and optional translated subtitle tracks.
 
 **Browser Subtitle Generation**:
-A browser-local transcription of the selected Reference Video into one editable, timed Subtitle Track. It consumes the reviewed WebGPU transcription capability also used by Native WhisperX's browser surface and does not upload media to an application server.
+A browser-local transcription of the selected Reference Video into one editable, timed Subtitle Track. Rust/WASM range-demuxes supported container audio, WebCodecs decodes bounded encoded packets, and the reviewed `audio-analysis` WebGPU capability consumes decoded audio with backpressure. It does not upload media, materialize the whole video, or depend on real-time playback.
 _Avoid_: Subtitle Generation Job, server generation, browser alignment
 
 **Source Subtitle Track**:
