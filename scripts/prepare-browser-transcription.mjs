@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const audioAnalysisRevision = "6be8b6f35b3d758cd2a87e7ee1dec5540330a426";
+const audioAnalysisRevision = "61a95716248af877739950872e44afeaf48bd9ae";
 const audioAnalysisRepository = "https://github.com/moritzbrantner/audio-analysis.git";
 const sourcePath = "packages/audio-analysis-transcription-wasm/index.js";
 const publicDirectory = resolve(repositoryRoot, "site", "public");
@@ -39,6 +39,8 @@ try {
     'id: "onnx-community/whisper-base"',
     'id: "onnx-community/whisper-small"',
     "models: browserTranscriptionModels()",
+    "maxIdleResidentModels: 1",
+    'eviction: "dispose-superseded"',
     'requiredAcceleration: "webgpu"',
     "translation: false",
     "server: false",
