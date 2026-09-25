@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const audioAnalysisRevision = "bbb978f20ee2e9069d435b8b374980eaf2cc7b5d";
+const audioAnalysisRevision = "f5b377b8caed6eb189f941dfab3e1c8989c2c8f0";
 const audioAnalysisRepository = "https://github.com/moritzbrantner/audio-analysis.git";
 const sourcePath = "packages/audio-analysis-transcription-wasm/index.js";
 const publicDirectory = resolve(repositoryRoot, "site", "public");
