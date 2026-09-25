@@ -32,6 +32,7 @@ import { generatedSubtitleTrack } from "../lib/browser-generation";
 import {
   inspectBrowserTranscriptionSupport,
   transcribeReferenceVideo,
+  type BrowserTranscriptionModel,
   type BrowserTranscriptionSupport,
 } from "../lib/browser-transcription";
 import {
@@ -131,15 +132,22 @@ function trackOriginLabel(track: Track) {
   return track.filename ?? "Imported subtitle file";
 }
 
-function browserGenerationTitle(support: BrowserTranscriptionSupport | undefined) {
+function browserGenerationTitle(
+  support: BrowserTranscriptionSupport | undefined,
+  model: BrowserTranscriptionModel | undefined,
+) {
   if (!support) {
     return "Checking WebGPU…";
   }
-  return support.available ? "Generate with WebGPU" : "WebGPU unavailable";
+  if (!support.available) {
+    return "WebGPU unavailable";
+  }
+  return model ? `Generate with ${model.label}` : "Select a Whisper model";
 }
 
 function browserGenerationDescription(
   support: BrowserTranscriptionSupport | undefined,
+  model: BrowserTranscriptionModel | undefined,
 ) {
   if (!support) {
     return "Checking whether this browser can run local transcription.";
@@ -147,7 +155,7 @@ function browserGenerationDescription(
   if (!support.available) {
     return support.reason;
   }
-  return "Whisper Tiny runs locally in this browser; model assets are cached after first use.";
+  return model?.description ?? "Choose a reviewed browser Whisper model.";
 }
 
 function formatByteCount(bytes: number) {
@@ -206,6 +214,7 @@ export function SubtitleWorkbench() {
   const [qualityBusy, setQualityBusy] = useState(false);
   const [browserTranscriptionSupport, setBrowserTranscriptionSupport] =
     useState<BrowserTranscriptionSupport>();
+  const [browserTranscriptionModelId, setBrowserTranscriptionModelId] = useState("");
   const [generatingSubtitles, setGeneratingSubtitles] = useState(false);
 
   useEffect(() => {
@@ -222,15 +231,40 @@ export function SubtitleWorkbench() {
 
   useEffect(() => {
     let active = true;
-    void inspectBrowserTranscriptionSupport().then((support) => {
-      if (active) {
-        setBrowserTranscriptionSupport(support);
-      }
-    });
+    inspectBrowserTranscriptionSupport()
+      .then((support) => {
+        if (active) {
+          setBrowserTranscriptionSupport(support);
+          if (support.available) {
+            setBrowserTranscriptionModelId((current) =>
+              support.models.some((model) => model.id === current)
+                ? current
+                : support.modelId,
+            );
+          }
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setBrowserTranscriptionSupport({
+            available: false,
+            reason: cause instanceof Error
+              ? cause.message
+              : "Browser transcription is unavailable.",
+          });
+        }
+      });
     return () => {
       active = false;
     };
   }, []);
+
+  const selectedBrowserTranscriptionModel =
+    browserTranscriptionSupport?.available === true
+      ? browserTranscriptionSupport.models.find(
+          (model) => model.id === browserTranscriptionModelId,
+        )
+      : undefined;
 
   const durationMs = useMemo(
     () =>
@@ -455,6 +489,7 @@ export function SubtitleWorkbench() {
     if (
       !videoFile
       || browserTranscriptionSupport?.available !== true
+      || !selectedBrowserTranscriptionModel
       || generatingSubtitles
     ) {
       return;
@@ -466,11 +501,15 @@ export function SubtitleWorkbench() {
     setError("");
 
     try {
-      const transcript = await transcribeReferenceVideo(sourceVideo, (progress) => {
-        if (progress.message) {
-          setBusy(progress.message);
-        }
-      });
+      const transcript = await transcribeReferenceVideo(
+        sourceVideo,
+        selectedBrowserTranscriptionModel.id,
+        (progress) => {
+          if (progress.message) {
+            setBusy(progress.message);
+          }
+        },
+      );
       const generated = generatedSubtitleTrack(transcript, {
         name: sourceVideo.name,
         size: sourceVideo.size,
@@ -500,6 +539,16 @@ export function SubtitleWorkbench() {
       setGeneratingSubtitles(false);
       setBusy("");
     }
+  }
+
+  function handleGenerateSubtitlesClick() {
+    handleGenerateSubtitles().catch((cause: unknown) => {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Browser subtitle generation failed.",
+      );
+    });
   }
 
   function toggleTrack(id: string) {
@@ -1037,21 +1086,62 @@ export function SubtitleWorkbench() {
             />
           </label>
 
-          <button
-            type="button"
-            className="file-target browser-generate-target"
-            disabled={
-              !videoFile
-              || Boolean(busy)
-              || generatingSubtitles
-              || browserTranscriptionSupport?.available !== true
-            }
-            onClick={() => void handleGenerateSubtitles()}
-          >
-            <span className="file-target-label">Generate subtitles</span>
-            <strong>{browserGenerationTitle(browserTranscriptionSupport)}</strong>
-            <span>{browserGenerationDescription(browserTranscriptionSupport)}</span>
-          </button>
+          <div className="browser-generation-panel">
+            <label className="browser-model-control" htmlFor="browser-whisper-model">
+              <span className="file-target-label">Whisper model</span>
+              <select
+                id="browser-whisper-model"
+                value={browserTranscriptionModelId}
+                disabled={
+                  generatingSubtitles
+                  || browserTranscriptionSupport?.available !== true
+                }
+                onChange={(event) => setBrowserTranscriptionModelId(event.target.value)}
+              >
+                {browserTranscriptionSupport?.available === true ? (
+                  browserTranscriptionSupport.models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">
+                    {browserTranscriptionSupport
+                      ? "Browser transcription unavailable"
+                      : "Checking models…"}
+                  </option>
+                )}
+              </select>
+              <span className="browser-model-description">
+                {browserGenerationDescription(
+                  browserTranscriptionSupport,
+                  selectedBrowserTranscriptionModel,
+                )}
+              </span>
+            </label>
+
+            <button
+              type="button"
+              className="browser-generate-target"
+              disabled={
+                !videoFile
+                || Boolean(busy)
+                || generatingSubtitles
+                || browserTranscriptionSupport?.available !== true
+                || !selectedBrowserTranscriptionModel
+              }
+              onClick={handleGenerateSubtitlesClick}
+            >
+              <span className="file-target-label">Generate subtitles</span>
+              <strong>
+                {browserGenerationTitle(
+                  browserTranscriptionSupport,
+                  selectedBrowserTranscriptionModel,
+                )}
+              </strong>
+              <span>Runs locally in this browser; model assets are cached after first use.</span>
+            </button>
+          </div>
         </div>
 
         {busy ? <p className="status-line">{busy}</p> : null}
