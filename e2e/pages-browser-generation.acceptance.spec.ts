@@ -3,6 +3,8 @@ import { mkdir, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const fixturePath = fileURLToPath(new URL('./fixtures/acceptance-video.webm', import.meta.url))
+const englishSubtitleFixturePath = fileURLToPath(new URL('./fixtures/pages-editor.en.srt', import.meta.url))
+const germanSubtitleFixturePath = fileURLToPath(new URL('./fixtures/pages-editor.de.srt', import.meta.url))
 
 const browserRuntime = `
 globalThis.__subtitleMergerBrowserTranscription = {
@@ -203,4 +205,86 @@ test('preserves finite-file allocation failures instead of calling them stale fi
     page.getByText(/Re-select the Reference Video and retry/),
   ).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Generated' })).toHaveCount(0)
+})
+
+
+test('edits subtitles directly in the video and scrubs the attached translation timeline', async ({ page }) => {
+  await prepareBrowserRuntime(page)
+  await page.goto('/')
+
+  const fileInputs = page.locator('input[type="file"]')
+  await fileInputs.nth(0).setInputFiles(fixturePath)
+  await fileInputs.nth(1).setInputFiles([
+    englishSubtitleFixturePath,
+    germanSubtitleFixturePath,
+  ])
+
+  const editorStack = page.locator('.video-editor-stack')
+  const timeline = editorStack.getByTestId('subtitle-timeline')
+  await expect(timeline).toBeVisible()
+  await expect(timeline.getByTestId('subtitle-timeline-lane')).toHaveCount(2)
+  await expect(page.getByRole('button', { name: 'Inspect', exact: true })).toHaveCount(0)
+
+  const cue = page
+    .getByTestId('video-subtitle-cue')
+    .filter({ hasText: 'Editable source subtitle' })
+  await expect(cue).toBeVisible()
+  const cueButton = cue.getByRole('button')
+  await cueButton.click()
+  await expect(cue).toHaveAttribute('data-selected', 'true')
+  await expect(page.getByLabel('Selected subtitle controls')).toBeVisible()
+
+  const beforeX = Number(await cue.getAttribute('data-position-x'))
+  const beforeY = Number(await cue.getAttribute('data-position-y'))
+  const cueBounds = await cueButton.boundingBox()
+  expect(cueBounds).not.toBeNull()
+  await page.mouse.move(
+    cueBounds!.x + cueBounds!.width / 2,
+    cueBounds!.y + cueBounds!.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    cueBounds!.x + cueBounds!.width / 2 + 80,
+    cueBounds!.y + cueBounds!.height / 2 - 50,
+  )
+  await page.mouse.up()
+
+  await expect.poll(async () => Number(await cue.getAttribute('data-position-x'))).not.toBe(beforeX)
+  await expect.poll(async () => Number(await cue.getAttribute('data-position-y'))).not.toBe(beforeY)
+
+  await cue.getByRole('button').dblclick()
+  const textEditor = page.getByRole('textbox', { name: /Edit pages-editor\.en, cue 1/ })
+  await expect(textEditor).toBeVisible()
+
+  const scrubber = page.getByTestId('timeline-scrubber')
+  const scrubberBounds = await scrubber.boundingBox()
+  expect(scrubberBounds).not.toBeNull()
+  await page.mouse.click(
+    scrubberBounds!.x + scrubberBounds!.width * 0.95,
+    scrubberBounds!.y + scrubberBounds!.height / 2,
+  )
+  await expect.poll(async () => Number(await scrubber.getAttribute('aria-valuenow'))).toBeGreaterThan(1_800)
+  await expect(textEditor).toBeVisible()
+
+  await page.mouse.click(
+    scrubberBounds!.x + scrubberBounds!.width * 0.55,
+    scrubberBounds!.y + scrubberBounds!.height / 2,
+  )
+  await expect.poll(async () => Number(await scrubber.getAttribute('aria-valuenow'))).toBeGreaterThan(800)
+  await expect(textEditor).toBeVisible()
+
+  await textEditor.fill('Edited directly on video')
+  await textEditor.press('Control+Enter')
+  await expect(cue).toContainText('Edited directly on video')
+  await expect.poll(async () =>
+    page.locator('video').evaluate((video) => (video as HTMLVideoElement).currentTime),
+  ).toBeGreaterThan(0.8)
+
+  if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
+    await mkdir('.artifacts', { recursive: true })
+    await page.screenshot({
+      path: '.artifacts/direct-subtitle-editor.png',
+      fullPage: true,
+    })
+  }
 })

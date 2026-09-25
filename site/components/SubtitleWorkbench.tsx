@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { CueTimelineBlock } from "./CueTimelineBlock";
 import { DriftCorrectionPanel } from "./DriftCorrectionPanel";
 import { SubtitleQualityPanel } from "./SubtitleQualityPanel";
+import { SubtitleSelectionBar } from "./SubtitleSelectionBar";
+import { VideoSubtitleCue } from "./VideoSubtitleCue";
 import {
   recordAcceptedDocument,
   redoAcceptedDocument,
@@ -18,10 +28,15 @@ import {
   type DriftCorrectionDraft,
 } from "../lib/drift-view";
 import {
-  currentCue,
   formatClock,
   inferTrackTitle,
 } from "../lib/subtitles";
+import {
+  clampCuePlacement,
+  defaultCuePlacement,
+  timelineMillisecondsFromPointer,
+  type CuePlacement,
+} from "../lib/editor-interaction";
 import type {
   Cue,
   SubtitleQualityReport,
@@ -55,6 +70,23 @@ type CueDraft = {
   endMs: string;
   rawText: string;
 };
+
+type CueSelection = {
+  trackId: string;
+  cueIndex: number;
+};
+
+type InlineCueEdit = CueSelection & {
+  rawText: string;
+};
+
+function selectionMatches(
+  selection: CueSelection | undefined,
+  trackId: string,
+  cueIndex: number,
+) {
+  return selection?.trackId === trackId && selection.cueIndex === cueIndex;
+}
 
 function fileTrackId(file: File) {
   return `file-${file.name}-${file.size}-${file.lastModified}`;
@@ -188,11 +220,15 @@ export function SubtitleWorkbench() {
   const cueEditInFlightRef = useRef(false);
   const qualityRequestRef = useRef(0);
   const cueTextRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const timelineScrubPointerRef = useRef<number | undefined>(undefined);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState("");
+  const [selectedCue, setSelectedCue] = useState<CueSelection>();
+  const [inlineCueEdit, setInlineCueEdit] = useState<InlineCueEdit>();
+  const [cuePlacements, setCuePlacements] = useState<Record<string, CuePlacement>>({});
   const [cueDrafts, setCueDrafts] = useState<Record<string, CueDraft>>({});
   const [documentHistory, setDocumentHistory] = useState<Record<string, DocumentHistory>>({});
   const [driftDraft, setDriftDraft] = useState<DriftCorrectionDraft>(emptyDriftCorrectionDraft);
@@ -255,6 +291,25 @@ export function SubtitleWorkbench() {
   const selectedTrackHasDrafts = selectedTrack
     ? Object.keys(cueDrafts).some((key) => key.startsWith(`${selectedTrack.id}:`))
     : false;
+  const selectedCueContext = useMemo(() => {
+    if (!selectedCue) {
+      return undefined;
+    }
+    const trackIndex = tracks.findIndex((track) => track.id === selectedCue.trackId);
+    const track = tracks[trackIndex];
+    const cue = track?.cues[selectedCue.cueIndex];
+    if (!track || !cue) {
+      return undefined;
+    }
+    const key = cueDraftKey(track.id, selectedCue.cueIndex);
+    return {
+      track,
+      trackIndex,
+      cue,
+      cueIndex: selectedCue.cueIndex,
+      placement: cuePlacements[key] ?? defaultCuePlacement(trackIndex),
+    };
+  }, [cuePlacements, selectedCue, tracks]);
 
   useEffect(() => {
     setDriftDraft(emptyDriftCorrectionDraft());
@@ -292,20 +347,38 @@ export function SubtitleWorkbench() {
       });
   }, [selectedTrack?.id, selectedTrack?.sourceBytes]);
 
-  const visibleCues = useMemo(
-    () =>
-      tracks
-        .filter((track) => track.enabled)
-        .map((track) => {
-          const sourcePosition = positionMs - track.offsetMs;
-          return {
-            track,
-            cue: sourcePosition >= 0 ? currentCue(track.cues, sourcePosition) : undefined,
-          };
-        })
-        .filter((entry) => entry.cue),
-    [positionMs, tracks],
-  );
+  const visibleCues = useMemo(() => {
+    const active = tracks.flatMap((track, trackIndex) => {
+      if (!track.enabled) {
+        return [];
+      }
+      const sourcePosition = positionMs - track.offsetMs;
+      if (sourcePosition < 0) {
+        return [];
+      }
+      const cueIndex = track.cues.findIndex(
+        (cue) => cue.startMs <= sourcePosition && sourcePosition < cue.endMs,
+      );
+      const cue = track.cues[cueIndex];
+      return cue ? [{ track, trackIndex, cue, cueIndex }] : [];
+    });
+    if (
+      !inlineCueEdit
+      || active.some(
+        ({ track, cueIndex }) =>
+          track.id === inlineCueEdit.trackId && cueIndex === inlineCueEdit.cueIndex,
+      )
+    ) {
+      return active;
+    }
+
+    const trackIndex = tracks.findIndex((track) => track.id === inlineCueEdit.trackId);
+    const track = tracks[trackIndex];
+    const cue = track?.cues[inlineCueEdit.cueIndex];
+    return track && cue
+      ? [...active, { track, trackIndex, cue, cueIndex: inlineCueEdit.cueIndex }]
+      : active;
+  }, [inlineCueEdit, positionMs, tracks]);
 
   async function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -324,6 +397,14 @@ export function SubtitleWorkbench() {
     setVideoFile(file);
     setVideoDurationMs(0);
     setPositionMs(0);
+    const removedTrackIds = new Set(
+      tracks
+        .filter((track) => track.origin !== "file")
+        .map((track) => track.id),
+    );
+    if (removedTrackIds.size > 0) {
+      clearTrackBrowserState(removedTrackIds);
+    }
     setTracks((current) => current.filter((track) => track.origin === "file"));
     setVideoUrl(URL.createObjectURL(file));
 
@@ -374,8 +455,23 @@ export function SubtitleWorkbench() {
     }
   }
 
-  function clearTrackBrowserState(trackIds: Set<string>) {
+  function clearCueBrowserState(trackIds: Set<string>) {
     const ids = [...trackIds];
+    setCuePlacements((current) => {
+      const next: Record<string, CuePlacement> = {};
+      for (const [key, placement] of Object.entries(current)) {
+        if (!ids.some((trackId) => key.startsWith(`${trackId}:`))) {
+          next[key] = placement;
+        }
+      }
+      return next;
+    });
+    setSelectedCue((current) =>
+      current && trackIds.has(current.trackId) ? undefined : current,
+    );
+    setInlineCueEdit((current) =>
+      current && trackIds.has(current.trackId) ? undefined : current,
+    );
     setCueDrafts((current) => {
       const next: Record<string, CueDraft> = {};
       for (const [key, draft] of Object.entries(current)) {
@@ -385,6 +481,15 @@ export function SubtitleWorkbench() {
       }
       return next;
     });
+    for (const key of Object.keys(cueTextRefs.current)) {
+      if (ids.some((trackId) => key.startsWith(`${trackId}:`))) {
+        delete cueTextRefs.current[key];
+      }
+    }
+  }
+
+  function clearTrackBrowserState(trackIds: Set<string>) {
+    clearCueBrowserState(trackIds);
     setDocumentHistory((current) => {
       const next = { ...current };
       for (const trackId of trackIds) {
@@ -392,11 +497,6 @@ export function SubtitleWorkbench() {
       }
       return next;
     });
-    for (const key of Object.keys(cueTextRefs.current)) {
-      if (ids.some((trackId) => key.startsWith(`${trackId}:`))) {
-        delete cueTextRefs.current[key];
-      }
-    }
   }
 
   async function handleSubtitleChange(event: ChangeEvent<HTMLInputElement>) {
@@ -593,7 +693,7 @@ export function SubtitleWorkbench() {
     });
   }
 
-  function remapCueDrafts(
+  function remapCueBrowserState(
     trackId: string,
     remap: (cueIndex: number) => number | undefined,
   ) {
@@ -612,6 +712,37 @@ export function SubtitleWorkbench() {
         }
       }
       return next;
+    });
+    setCuePlacements((current) => {
+      const next: Record<string, CuePlacement> = {};
+      for (const [key, placement] of Object.entries(current)) {
+        if (!key.startsWith(prefix)) {
+          next[key] = placement;
+          continue;
+        }
+        const sourceIndex = Number(key.slice(prefix.length));
+        const targetIndex = remap(sourceIndex);
+        if (targetIndex !== undefined) {
+          next[cueDraftKey(trackId, targetIndex)] = placement;
+        }
+      }
+      return next;
+    });
+    setSelectedCue((current) => {
+      if (!current || current.trackId !== trackId) {
+        return current;
+      }
+      const targetIndex = remap(current.cueIndex);
+      return targetIndex === undefined ? undefined : { trackId, cueIndex: targetIndex };
+    });
+    setInlineCueEdit((current) => {
+      if (!current || current.trackId !== trackId) {
+        return current;
+      }
+      const targetIndex = remap(current.cueIndex);
+      return targetIndex === undefined
+        ? undefined
+        : { ...current, cueIndex: targetIndex };
     });
     for (const key of Object.keys(cueTextRefs.current)) {
       if (key.startsWith(prefix)) {
@@ -745,7 +876,7 @@ export function SubtitleWorkbench() {
         textOffsetUtf16: textarea.selectionStart,
       });
       acceptTrackDocument(track, edited);
-      remapCueDrafts(track.id, (draftIndex) => {
+      remapCueBrowserState(track.id, (draftIndex) => {
         if (draftIndex === cueIndex) {
           return undefined;
         }
@@ -781,7 +912,7 @@ export function SubtitleWorkbench() {
       source = await applyCueDraftToSource(source, track, cueIndex + 1, nextCue);
       const edited = await mergeSubtitleCues(source, cueIndex);
       acceptTrackDocument(track, edited);
-      remapCueDrafts(track.id, (draftIndex) => {
+      remapCueBrowserState(track.id, (draftIndex) => {
         if (draftIndex === cueIndex || draftIndex === cueIndex + 1) {
           return undefined;
         }
@@ -907,11 +1038,7 @@ export function SubtitleWorkbench() {
         ...current,
         [track.id]: step.history,
       }));
-      for (const key of Object.keys(cueTextRefs.current)) {
-        if (key.startsWith(`${track.id}:`)) {
-          delete cueTextRefs.current[key];
-        }
-      }
+      clearCueBrowserState(new Set([track.id]));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `The ${direction} operation failed.`);
     } finally {
@@ -942,12 +1069,147 @@ export function SubtitleWorkbench() {
   }
 
   function seek(milliseconds: number) {
-    setPositionMs(milliseconds);
+    const bounded = Math.min(durationMs, Math.max(0, milliseconds));
+    setPositionMs(bounded);
     const video = videoRef.current;
     if (!video) {
       return;
     }
-    video.currentTime = milliseconds / 1000;
+    video.currentTime = bounded / 1000;
+  }
+
+  function selectCue(trackId: string, cueIndex: number) {
+    setSelectedTrackId(trackId);
+    setSelectedCue({ trackId, cueIndex });
+  }
+
+  function setCuePlacement(trackId: string, cueIndex: number, placement: CuePlacement) {
+    setCuePlacements((current) => ({
+      ...current,
+      [cueDraftKey(trackId, cueIndex)]: clampCuePlacement(placement),
+    }));
+  }
+
+  function beginInlineCueEdit(track: Track, cueIndex: number, cue: Cue) {
+    selectCue(track.id, cueIndex);
+    if (!track.sourceBytes) {
+      setError("This subtitle track does not retain an editable source document.");
+      return;
+    }
+    if (cueDrafts[cueDraftKey(track.id, cueIndex)]) {
+      setError("Save the pending cue draft before editing this subtitle directly in the video.");
+      return;
+    }
+    const adjustedStartMs = shiftedTime(cue.startMs, track.offsetMs);
+    const adjustedEndMs = shiftedTime(cue.endMs, track.offsetMs);
+    videoRef.current?.pause();
+    if (positionMs < adjustedStartMs || positionMs >= adjustedEndMs) {
+      seek(adjustedStartMs);
+    }
+    setInlineCueEdit({
+      trackId: track.id,
+      cueIndex,
+      rawText: cue.rawText ?? cue.text,
+    });
+    setError("");
+  }
+
+  async function commitInlineCueEdit() {
+    const edit = inlineCueEdit;
+    if (!edit || cueEditInFlightRef.current) {
+      return;
+    }
+    const track = tracks.find((candidate) => candidate.id === edit.trackId);
+    const cue = track?.cues[edit.cueIndex];
+    if (!track?.sourceBytes || !cue) {
+      setInlineCueEdit(undefined);
+      return;
+    }
+    const original = cue.rawText ?? cue.text;
+    if (edit.rawText === original) {
+      setInlineCueEdit(undefined);
+      return;
+    }
+    if (edit.rawText.trim() === "") {
+      setError("Cue text must not be empty.");
+      return;
+    }
+
+    cueEditInFlightRef.current = true;
+    setBusy(`Saving cue ${edit.cueIndex + 1} through Rust/WASM…`);
+    setError("");
+    try {
+      const edited = await editSubtitleCue(track.sourceBytes, {
+        cueIndex: edit.cueIndex,
+        startMs: cue.startMs,
+        endMs: cue.endMs,
+        rawText: edit.rawText,
+      });
+      acceptTrackDocument(track, edited);
+      setInlineCueEdit(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The cue text could not be updated.");
+    } finally {
+      cueEditInFlightRef.current = false;
+      setBusy("");
+    }
+  }
+
+  function seekFromTimelinePointer(event: ReactPointerEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    seek(
+      timelineMillisecondsFromPointer(
+        event.clientX,
+        bounds.left,
+        bounds.width,
+        durationMs,
+      ),
+    );
+  }
+
+  function beginTimelineScrub(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    timelineScrubPointerRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    seekFromTimelinePointer(event);
+    event.preventDefault();
+  }
+
+  function moveTimelineScrub(event: ReactPointerEvent<HTMLDivElement>) {
+    if (timelineScrubPointerRef.current !== event.pointerId) {
+      return;
+    }
+    seekFromTimelinePointer(event);
+    event.preventDefault();
+  }
+
+  function endTimelineScrub(event: ReactPointerEvent<HTMLDivElement>) {
+    if (timelineScrubPointerRef.current !== event.pointerId) {
+      return;
+    }
+    timelineScrubPointerRef.current = undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleTimelineKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 10_000 : 1_000;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      seek(positionMs - step);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      seek(positionMs + step);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      seek(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      seek(durationMs);
+    }
   }
 
   function selectQualityCue(cueIndex: number) {
@@ -1068,6 +1330,7 @@ export function SubtitleWorkbench() {
         ) : null}
       </section>
 
+      <div className="video-editor-stack">
       <section className="preview-panel" aria-labelledby="preview-heading">
         <div className="section-heading">
           <div>
@@ -1098,12 +1361,37 @@ export function SubtitleWorkbench() {
               />
               {visibleCues.length > 0 ? (
                 <div className="subtitle-overlay" aria-live="off">
-                  {visibleCues.map(({ track, cue }) => (
-                    <p key={track.id}>
-                      <span>{track.title}</span>
-                      {cue?.text}
-                    </p>
-                  ))}
+                  {visibleCues.map(({ track, trackIndex, cue, cueIndex }) => {
+                    const key = cueDraftKey(track.id, cueIndex);
+                    const editing = selectionMatches(inlineCueEdit, track.id, cueIndex);
+                    return (
+                      <VideoSubtitleCue
+                        key={key}
+                        trackId={track.id}
+                        trackTitle={track.title}
+                        cueIndex={cueIndex}
+                        text={cue.text}
+                        placement={cuePlacements[key] ?? defaultCuePlacement(trackIndex)}
+                        selected={selectionMatches(selectedCue, track.id, cueIndex)}
+                        editable={Boolean(track.sourceBytes)}
+                        editing={editing}
+                        editText={editing ? inlineCueEdit?.rawText ?? "" : ""}
+                        busy={Boolean(busy)}
+                        onSelect={() => selectCue(track.id, cueIndex)}
+                        onMove={(placement) => setCuePlacement(track.id, cueIndex, placement)}
+                        onBeginTextEdit={() => beginInlineCueEdit(track, cueIndex, cue)}
+                        onEditTextChange={(rawText) =>
+                          setInlineCueEdit((current) =>
+                            current && selectionMatches(current, track.id, cueIndex)
+                              ? { ...current, rawText }
+                              : current,
+                          )
+                        }
+                        onCommitTextEdit={commitInlineCueEdit}
+                        onCancelTextEdit={() => setInlineCueEdit(undefined)}
+                      />
+                    );
+                  })}
                 </div>
               ) : null}
             </>
@@ -1114,6 +1402,29 @@ export function SubtitleWorkbench() {
             </div>
           )}
         </div>
+        {selectedCueContext ? (
+          <SubtitleSelectionBar
+            trackTitle={selectedCueContext.track.title}
+            cueIndex={selectedCueContext.cueIndex}
+            placement={selectedCueContext.placement}
+            editable={Boolean(selectedCueContext.track.sourceBytes)}
+            busy={Boolean(busy)}
+            onPlacementChange={(placement) =>
+              setCuePlacement(
+                selectedCueContext.track.id,
+                selectedCueContext.cueIndex,
+                placement,
+              )
+            }
+            onEditText={() =>
+              beginInlineCueEdit(
+                selectedCueContext.track,
+                selectedCueContext.cueIndex,
+                selectedCueContext.cue,
+              )
+            }
+          />
+        ) : null}
       </section>
 
       <section className="tracks-panel" aria-labelledby="tracks-heading">
@@ -1130,34 +1441,71 @@ export function SubtitleWorkbench() {
             Embedded text tracks appear here after video inspection. You can also add subtitle files before or after selecting a video.
           </p>
         ) : (
-          <div className="timeline" role="list">
-            <div className="timeline-ruler" aria-hidden="true">
+          <div className="timeline" data-testid="subtitle-timeline">
+            <div
+              className="timeline-ruler"
+              role="slider"
+              tabIndex={0}
+              aria-label="Video timeline"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(durationMs)}
+              aria-valuenow={Math.round(positionMs)}
+              aria-valuetext={formatClock(positionMs)}
+              data-testid="timeline-scrubber"
+              onPointerDown={beginTimelineScrub}
+              onPointerMove={moveTimelineScrub}
+              onPointerUp={endTimelineScrub}
+              onPointerCancel={endTimelineScrub}
+              onKeyDown={handleTimelineKeyDown}
+            >
               <span>0</span>
               <span>{formatClock(durationMs / 2)}</span>
               <span>{formatClock(durationMs)}</span>
             </div>
             {tracks.map((track) => (
-              <div className="timeline-row" role="listitem" key={track.id}>
-                <div className="track-label">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={track.enabled}
-                      onChange={() => toggleTrack(track.id)}
-                    />
-                    <span>
-                      <strong>{track.title}</strong>
-                      <small>
-                        {track.origin === "embedded" ? "embedded" : track.filename} · {track.codec} · {track.cues.length} cues
-                        {track.offsetMs !== 0 ? ` · offset ${track.offsetMs > 0 ? "+" : ""}${track.offsetMs} ms` : ""}
-                      </small>
-                    </span>
-                  </label>
-                  <button type="button" className="text-button" onClick={() => setSelectedTrackId(track.id)}>
-                    Inspect
+              <div className="timeline-row" key={track.id}>
+                <div className={`track-label${selectedTrack?.id === track.id ? " is-selected" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={track.enabled}
+                    aria-label={`Enable ${track.title}`}
+                    onChange={() => toggleTrack(track.id)}
+                  />
+                  <button
+                    type="button"
+                    className="track-select-button"
+                    aria-pressed={selectedTrack?.id === track.id}
+                    onClick={() => {
+                      setSelectedTrackId(track.id);
+                      setSelectedCue((current) =>
+                        current?.trackId === track.id ? current : undefined,
+                      );
+                      setInlineCueEdit((current) =>
+                        current?.trackId === track.id ? current : undefined,
+                      );
+                    }}
+                  >
+                    <strong>{track.title}</strong>
+                    <small>
+                      {track.origin === "embedded" ? "embedded" : track.filename} · {track.codec} · {track.cues.length} cues
+                      {track.offsetMs !== 0 ? ` · offset ${track.offsetMs > 0 ? "+" : ""}${track.offsetMs} ms` : ""}
+                    </small>
                   </button>
                 </div>
-                <div className="cue-lane">
+                <div
+                  className="cue-lane"
+                  data-testid="subtitle-timeline-lane"
+                  data-track-id={track.id}
+                  onPointerDown={beginTimelineScrub}
+                  onPointerMove={moveTimelineScrub}
+                  onPointerUp={endTimelineScrub}
+                  onPointerCancel={endTimelineScrub}
+                >
+                  <span
+                    className="timeline-playhead"
+                    aria-hidden="true"
+                    style={{ left: `${Math.min(100, Math.max(0, (positionMs / durationMs) * 100))}%` }}
+                  />
                   {track.cues.map((cue, index) => (
                     <CueTimelineBlock
                       key={`${cue.startMs}-${cue.endMs}-${index}`}
@@ -1167,7 +1515,9 @@ export function SubtitleWorkbench() {
                       trackOffsetMs={track.offsetMs}
                       timelineDurationMs={durationMs}
                       editable={Boolean(track.sourceBytes) && !cueDrafts[cueDraftKey(track.id, index)]}
+                      selected={selectionMatches(selectedCue, track.id, index)}
                       busy={Boolean(busy)}
+                      onSelect={() => selectCue(track.id, index)}
                       onSeek={seek}
                       onCommitTiming={(startMs, endMs) =>
                         commitTimelineCueTiming(track, index, cue, startMs, endMs)
@@ -1180,6 +1530,7 @@ export function SubtitleWorkbench() {
           </div>
         )}
       </section>
+      </div>
 
       {tracks.length > 0 ? (
         <section className="merge-panel" aria-labelledby="merge-heading">
