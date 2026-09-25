@@ -10,13 +10,11 @@ globalThis.__subtitleMergerBrowserTranscription = {
     return {
       runtime: "acceptance-webgpu",
       requiredAcceleration: "webgpu",
-      modelId: "acceptance-whisper",
+      modelId: "onnx-community/whisper-tiny",
       modelProvisioning: "acceptance-fixture",
       features: {
         transcription: true,
         timedSegments: true,
-        boundedPcmStreaming: true,
-        mediaStreamAdapter: true,
       },
       fallbacks: {
         server: false,
@@ -28,47 +26,38 @@ globalThis.__subtitleMergerBrowserTranscription = {
   async supportsBrowserTranscription() {
     return true;
   },
-  async transcribeAudioBlob() {
+  async transcribeAudioBlob(source, options = {}) {
     globalThis.__subtitleMergerGenerationEvidence = {
       ...(globalThis.__subtitleMergerGenerationEvidence ?? {}),
       blobPathUsed: true,
-    };
-    throw new DOMException(
-      "The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.",
-      "NotReadableError",
-    );
-  },
-  async createBrowserMediaStreamTranscriptionSession(stream, options = {}) {
-    const audioTracks = stream.getAudioTracks();
-    globalThis.__subtitleMergerGenerationEvidence = {
-      ...(globalThis.__subtitleMergerGenerationEvidence ?? {}),
-      streamPathUsed: true,
-      audioTrackCount: audioTracks.length,
+      sourceSize: source.size,
     };
     options.onProgress?.({
-      stage: "capture",
-      message: "Capturing bounded browser audio…",
+      stage: "model",
+      message: "Loading Whisper Tiny in the browser…",
     });
+    if (globalThis.__subtitleMergerForceBlobReadFailure === true) {
+      throw new DOMException(
+        "The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.",
+        "NotReadableError",
+      );
+    }
     return {
-      async finish() {
-        return {
-          text: "Generated from bounded media",
-          language: "en",
-          segments: [
-            {
-              index: 0,
-              startSeconds: 0.1,
-              endSeconds: 1.2,
-              text: "Generated from bounded media",
-            },
-          ],
-          source: "acceptance-video.webm",
-          attributes: {
-            runtime: "acceptance-webgpu",
-          },
-        };
+      text: "Generated from finite local file",
+      language: "en",
+      segments: [
+        {
+          index: 0,
+          startSeconds: 0.1,
+          endSeconds: 1.2,
+          text: "Generated from finite local file",
+        },
+      ],
+      source: "acceptance-video.webm",
+      attributes: {
+        runtime: "acceptance-webgpu",
+        modelId: "onnx-community/whisper-tiny",
       },
-      async abort() {},
     };
   },
 };
@@ -118,7 +107,7 @@ test('keeps the selected Reference Video attached to its file input', async ({ p
   await expect(page.getByRole('button', { name: /Generate subtitles/ })).toBeEnabled()
 })
 
-test('falls back to a bounded browser media stream when whole-video reading fails', async ({ page }) => {
+test('transcribes the selected Reference Video as one finite local file', async ({ page }) => {
   await prepareBrowserRuntime(page)
   await page.goto('/')
 
@@ -129,21 +118,19 @@ test('falls back to a bounded browser media stream when whole-video reading fail
   await generate.click()
 
   await expect(page.getByRole('heading', { name: 'Generated' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('Generated from bounded media').last()).toBeVisible()
+  await expect(page.getByText('Generated from finite local file').last()).toBeVisible()
 
   const evidence = await page.evaluate(() =>
     (globalThis as typeof globalThis & {
       __subtitleMergerGenerationEvidence?: {
         blobPathUsed?: boolean
-        streamPathUsed?: boolean
-        audioTrackCount?: number
+        sourceSize?: number
       }
     }).__subtitleMergerGenerationEvidence,
   )
   expect(evidence).toEqual({
     blobPathUsed: true,
-    streamPathUsed: true,
-    audioTrackCount: 1,
+    sourceSize: 34_617,
   })
 
   if (process.env['CAPTURE_UI_SCREENSHOT'] === '1') {
@@ -153,4 +140,40 @@ test('falls back to a bounded browser media stream when whole-video reading fail
       fullPage: true,
     })
   }
+})
+
+test('surfaces a finite-file read failure instead of switching to streaming', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(globalThis as typeof globalThis & {
+      __subtitleMergerForceBlobReadFailure?: boolean
+    }).__subtitleMergerForceBlobReadFailure = true
+  })
+  await prepareBrowserRuntime(page)
+  await page.goto('/')
+
+  const input = page.locator('input[type="file"]').first()
+  await input.setInputFiles(fixturePath)
+  const generate = page.getByRole('button', { name: /Generate subtitles/ })
+  await expect(generate).toBeEnabled()
+  await generate.click()
+
+  await expect(
+    page.getByText(
+      'The browser could not read the selected Reference Video for local Whisper transcription. Re-select the Reference Video and retry.',
+    ),
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: 'Generated' })).toHaveCount(0)
+
+  const evidence = await page.evaluate(() =>
+    (globalThis as typeof globalThis & {
+      __subtitleMergerGenerationEvidence?: {
+        blobPathUsed?: boolean
+        sourceSize?: number
+      }
+    }).__subtitleMergerGenerationEvidence,
+  )
+  expect(evidence).toEqual({
+    blobPathUsed: true,
+    sourceSize: 34_617,
+  })
 })
