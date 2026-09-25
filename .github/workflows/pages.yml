@@ -2,14 +2,6 @@ name: Pages
 
 on:
   pull_request:
-    paths:
-      - "site/**"
-      - "web-wasm/**"
-      - "scripts/build-web-wasm.mjs"
-      - "scripts/prepare-browser-transcription.mjs"
-      - "scripts/check-pages.mjs"
-      - "package.json"
-      - ".github/workflows/pages.yml"
   push:
     branches: [main]
     paths:
