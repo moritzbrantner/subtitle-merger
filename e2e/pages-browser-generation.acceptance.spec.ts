@@ -223,7 +223,7 @@ test('edits subtitles directly in the video and scrubs the attached translation 
   const timeline = editorStack.getByTestId('subtitle-timeline')
   await expect(timeline).toBeVisible()
   await expect(timeline.getByTestId('subtitle-timeline-lane')).toHaveCount(2)
-  await expect(page.getByRole('button', { name: 'Inspect' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Inspect', exact: true })).toHaveCount(0)
 
   const cue = page
     .getByTestId('video-subtitle-cue')
