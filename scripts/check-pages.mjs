@@ -32,6 +32,8 @@ for (const required of [
   'id: "onnx-community/whisper-base"',
   'id: "onnx-community/whisper-small"',
   "models: browserTranscriptionModels()",
+  "maxIdleResidentModels: 1",
+  'eviction: "dispose-superseded"',
   'requiredAcceleration: "webgpu"',
   "server: false",
   "python: false",
