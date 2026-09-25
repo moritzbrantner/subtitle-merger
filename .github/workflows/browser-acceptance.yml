@@ -83,6 +83,7 @@ jobs:
           path: |
             .artifacts/ui-consumer-convergence.png
             .artifacts/browser-generation-readability.png
+            .artifacts/direct-subtitle-editor.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload browser failure evidence
