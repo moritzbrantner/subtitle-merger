@@ -8,8 +8,9 @@ const indexPath = resolve(out, "index.html");
 const wasmPath = resolve(out, "subtitle_merger_web_wasm.wasm");
 const transcriptionPath = resolve(out, "vendor", "audio-analysis-transcription.js");
 const bridgePath = resolve(out, "browser-transcription-bridge.js");
+const transcriptionWorkerPath = resolve(out, "audio-transcription-worker.js");
 
-for (const path of [indexPath, wasmPath, transcriptionPath, bridgePath]) {
+for (const path of [indexPath, wasmPath, transcriptionPath, bridgePath, transcriptionWorkerPath]) {
   await access(path, constants.R_OK);
 }
 
@@ -28,6 +29,10 @@ for (const required of [
   "export function browserTranscriptionCapabilities()",
   "export async function supportsBrowserTranscription()",
   "export async function transcribeAudioBlob",
+  "export function createBrowserDecodedAudioTranscriptionSession",
+  "export function createBrowserPcmResampler",
+  '"WebCodecs AudioData stream"',
+  "decodedAudioAdapter: true",
   'id: "onnx-community/whisper-tiny"',
   'id: "onnx-community/whisper-base"',
   'id: "onnx-community/whisper-small"',
@@ -50,6 +55,29 @@ if (
   || !bridge.includes("globalThis.__subtitleMergerBrowserTranscription = runtime")
 ) {
   throw new Error("Browser transcription bridge does not expose the reviewed runtime.");
+}
+
+
+const transcriptionWorker = await readFile(transcriptionWorkerPath, "utf8");
+for (const required of [
+  "audio_demux_create",
+  "audio_demux_poll",
+  "audio_demux_supply",
+  "audio_demux_acknowledge",
+  "AudioDecoder.isConfigSupported",
+  "createBrowserDecodedAudioTranscriptionSession",
+  "file.slice(offset, end).arrayBuffer()",
+]) {
+  if (!transcriptionWorker.includes(required)) {
+    throw new Error(`Browser transcription worker is missing: ${required}`);
+  }
+}
+if (
+  transcriptionWorker.includes("file.arrayBuffer()")
+  || transcriptionWorker.includes("captureStream")
+  || transcriptionWorker.includes("MediaStream")
+) {
+  throw new Error("Browser transcription worker regressed to whole-file or real-time media acquisition.");
 }
 
 const wasm = await stat(wasmPath);
