@@ -77,8 +77,10 @@ async function main() {
   if (stopping) return
   env.SERVER_ADDR = address
   env.VITE_BACKEND_URL = backendUrl.origin
-  console.log('Starting the native backend. AI models are downloaded only when generation needs them.')
-  launch('cargo', ['run', '--locked', '--manifest-path', 'backend/Cargo.toml'], env)
+  console.log('Building and starting the optimized native backend. The first build takes longer; subsequent starts reuse it. AI models download only when generation needs them.')
+  // CPU inference must not run in Cargo's unoptimized development profile.
+  // The separate dev:backend command remains available for native debugging.
+  launch('cargo', ['run', '--release', '--locked', '--manifest-path', 'backend/Cargo.toml'], env)
 
   // Do not open an apparently ready editor while the first native build is still running.
   while (!stopping) {

@@ -7,18 +7,20 @@ const languageOptions = ['en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl'] as cons
 type GenerationPanelProps = {
   messages: AppMessages
   locale: Locale
+  sourceLanguage: string
   targetLanguage: string
   diarize: boolean
   isGenerating: boolean
   generationMessage?: string
+  onSourceLanguageChange: (language: string) => void
   onTargetLanguageChange: (language: string) => void
   onDiarizeChange: (enabled: boolean) => void
   onGenerate: () => void
 }
 
 export function GenerationPanel({
-  messages, locale, targetLanguage, diarize, isGenerating, generationMessage,
-  onTargetLanguageChange, onDiarizeChange, onGenerate,
+  messages, locale, sourceLanguage, targetLanguage, diarize, isGenerating, generationMessage,
+  onSourceLanguageChange, onTargetLanguageChange, onDiarizeChange, onGenerate,
 }: GenerationPanelProps) {
   const [readiness, setReadiness] = useState<GenerationPreflight>()
   const [readinessError, setReadinessError] = useState<string>()
@@ -50,10 +52,23 @@ export function GenerationPanel({
         ) : null}
       </div>
       <label>
+        {messages.sourceLanguage}
+        <select
+          value={sourceLanguage}
+          disabled={isGenerating}
+          onChange={(event) => onSourceLanguageChange(event.currentTarget.value)}
+        >
+          <option value="">{messages.noSourceLanguage}</option>
+          {languageOptions.map((code) => (
+            <option key={code} value={code}>{formatLanguageName(locale, code)}</option>
+          ))}
+        </select>
+      </label>
+      <label>
         {messages.translateTo}
         <select
           value={targetLanguage}
-          disabled={isGenerating}
+          disabled={isGenerating || !sourceLanguage}
           onChange={(event) => onTargetLanguageChange(event.currentTarget.value)}
         >
           <option value="">{messages.noTranslation}</option>

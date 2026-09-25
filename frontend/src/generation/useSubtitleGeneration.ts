@@ -197,6 +197,7 @@ export function useSubtitleGeneration({
 }: UseSubtitleGenerationOptions) {
   const controller = useMemo(() => createSubtitleGenerationController(), [])
   const previousVideoIdRef = useRef(video?.id)
+  const [sourceLanguage, setSourceLanguage] = useState('')
   const [targetLanguage, setTargetLanguage] = useState('')
   const [diarize, setDiarize] = useState(false)
   const [status, setStatus] = useState<GenerationStatus>({ videoId: video?.id, isGenerating: false })
@@ -213,7 +214,12 @@ export function useSubtitleGeneration({
     if (!video || referenceVideoDurationMs === undefined) return
     const videoId = video.id
     await controller.generate(
-      { video, targetLanguage: targetLanguage || undefined, diarize },
+      {
+        video,
+        sourceLanguage: sourceLanguage || undefined,
+        targetLanguage: targetLanguage || undefined,
+        diarize,
+      },
       messages,
       {
         onGeneratingChange: (isGenerating) => {
@@ -228,13 +234,27 @@ export function useSubtitleGeneration({
         },
       },
     )
-  }, [controller, diarize, messages, onCompletedAssets, referenceVideoDurationMs, targetLanguage, video])
+  }, [
+    controller,
+    diarize,
+    messages,
+    onCompletedAssets,
+    referenceVideoDurationMs,
+    sourceLanguage,
+    targetLanguage,
+    video,
+  ])
+
+  const updateSourceLanguage = useCallback((language: string) => {
+    setSourceLanguage(language)
+    if (!language) setTargetLanguage('')
+  }, [])
 
   const isCurrentVideo = status.videoId === video?.id
   return {
-    targetLanguage, diarize,
+    sourceLanguage, targetLanguage, diarize,
     isGenerating: isCurrentVideo ? status.isGenerating : false,
     generationMessage: isCurrentVideo ? status.message : undefined,
-    setTargetLanguage, setDiarize, generate,
+    setSourceLanguage: updateSourceLanguage, setTargetLanguage, setDiarize, generate,
   }
 }

@@ -1,0 +1,63 @@
+name: Native First Run
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/native-first-run.yml
+      - e2e/native-first-run.mjs
+      - e2e/dev-startup.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-first-run-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cold-cache:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install locked browser test dependencies
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Verify ordinary development editor startup
+        run: bun e2e/dev-startup.mjs
+      - name: Exercise real cold downloads and native generation through bun start
+        run: bun e2e/native-first-run.mjs
+      - name: Collect native failure context
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, os, tarfile
+          os.makedirs('.artifacts/first-run', exist_ok=True)
+          roots = ['backend/src', 'backend/Cargo.toml', 'Cargo.lock', 'scripts', 'frontend/src', 'frontend/vite.config.ts', 'frontend/package.json']
+          roots += ['node_modules/@moritzbrantner/timeline-editor/src', 'node_modules/@moritzbrantner/ui/dist', 'node_modules/@moenarch/editor-core/dist']
+          roots += glob.glob(os.path.expanduser('~/.cargo/git/checkouts/native-whisperx-*/*/crates/native-whisperx/src'))
+          for package in ['moenarch-audio-analysis-transcription', 'moenarch-model-runtime', 'moenarch-text-model-runtime', 'hf-hub']:
+              roots += glob.glob(os.path.expanduser('~/.cargo/registry/src/*/' + package + '-*'))
+          with tarfile.open('.artifacts/first-run/native-source-context.tar.gz', 'w:gz', dereference=True) as archive:
+              for index, root in enumerate(roots):
+                  if os.path.exists(root):
+                      archive.add(root, arcname=str(index) + '/' + os.path.basename(root))
+          PY
+      - name: Upload first-run receipts, transcripts and screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-first-run-evidence
+          path: .artifacts/first-run/
+          if-no-files-found: error
+          retention-days: 14

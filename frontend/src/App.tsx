@@ -157,10 +157,12 @@ function App() {
           <GenerationPanel
             messages={messages}
             locale={locale}
+            sourceLanguage={generation.sourceLanguage}
             targetLanguage={generation.targetLanguage}
             diarize={generation.diarize}
             isGenerating={generation.isGenerating}
             generationMessage={generation.generationMessage}
+            onSourceLanguageChange={generation.setSourceLanguage}
             onTargetLanguageChange={generation.setTargetLanguage}
             onDiarizeChange={generation.setDiarize}
             onGenerate={() => void generation.generate()}

@@ -30,6 +30,8 @@ export type AppMessages = {
   modelSetupNotice: string
   speakerUnavailable: string
   modelCache: string
+  sourceLanguage: string
+  noSourceLanguage: string
   translateTo: string
   noTranslation: string
   identifySpeakers: string
@@ -86,6 +88,8 @@ const messages: Record<Locale, AppMessages> = {
     modelSetupNotice: 'Missing AI models download automatically when you generate subtitles. The first run needs internet access and free disk space; cached models are reused. Translation downloads only the models for the requested languages.',
     speakerUnavailable: 'Speaker identification is not included in this build.',
     modelCache: 'Model cache',
+    sourceLanguage: 'Spoken language',
+    noSourceLanguage: 'Not specified',
     translateTo: 'Translate to',
     noTranslation: 'No translation',
     identifySpeakers: 'Identify speakers',
@@ -155,6 +159,8 @@ const messages: Record<Locale, AppMessages> = {
     modelSetupNotice: 'Fehlende KI-Modelle werden beim Erzeugen automatisch heruntergeladen. Der erste Durchlauf benötigt Internet und freien Speicherplatz; vorhandene Modelle werden wiederverwendet. Für Übersetzungen werden nur die benötigten Sprachmodelle geladen.',
     speakerUnavailable: 'Sprechererkennung ist in dieser Version nicht enthalten.',
     modelCache: 'Modell-Cache',
+    sourceLanguage: 'Gesprochene Sprache',
+    noSourceLanguage: 'Nicht angegeben',
     translateTo: 'Übersetzen nach',
     noTranslation: 'Keine Übersetzung',
     identifySpeakers: 'Sprecher erkennen',
@@ -224,6 +230,8 @@ const messages: Record<Locale, AppMessages> = {
     modelSetupNotice: 'Los modelos de IA que falten se descargan al generar subtítulos. La primera ejecución necesita internet y espacio libre; los modelos guardados se reutilizan. La traducción descarga solo los modelos de los idiomas solicitados.',
     speakerUnavailable: 'La identificación de hablantes no está incluida en esta versión.',
     modelCache: 'Caché de modelos',
+    sourceLanguage: 'Idioma hablado',
+    noSourceLanguage: 'Sin especificar',
     translateTo: 'Traducir a',
     noTranslation: 'Sin traducción',
     identifySpeakers: 'Identificar hablantes',
