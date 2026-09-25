@@ -42,6 +42,9 @@ globalThis.__subtitleMergerBrowserTranscription = {
         "NotReadableError",
       );
     }
+    if (globalThis.__subtitleMergerForceAllocationFailure === true) {
+      throw new Error("ArrayBuffer allocation failed while decoding the Reference Video.");
+    }
     return {
       text: "Generated from finite local file",
       language: "en",
@@ -176,4 +179,28 @@ test('surfaces a finite-file read failure instead of switching to streaming', as
     blobPathUsed: true,
     sourceSize: (await stat(fixturePath)).size,
   })
+})
+
+test('preserves finite-file allocation failures instead of calling them stale file handles', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(globalThis as typeof globalThis & {
+      __subtitleMergerForceAllocationFailure?: boolean
+    }).__subtitleMergerForceAllocationFailure = true
+  })
+  await prepareBrowserRuntime(page)
+  await page.goto('/')
+
+  const input = page.locator('input[type="file"]').first()
+  await input.setInputFiles(fixturePath)
+  const generate = page.getByRole('button', { name: /Generate subtitles/ })
+  await expect(generate).toBeEnabled()
+  await generate.click()
+
+  await expect(
+    page.getByText('ArrayBuffer allocation failed while decoding the Reference Video.'),
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(
+    page.getByText(/Re-select the Reference Video and retry/),
+  ).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Generated' })).toHaveCount(0)
 })
