@@ -24,10 +24,16 @@ if (
 
 const runtime = await readFile(transcriptionPath, "utf8");
 for (const required of [
+  "export function browserTranscriptionModels()",
   "export function browserTranscriptionCapabilities()",
   "export async function supportsBrowserTranscription()",
   "export async function transcribeAudioBlob",
-  'const DEFAULT_BROWSER_MODEL_ID = "onnx-community/whisper-tiny";',
+  'id: "onnx-community/whisper-tiny"',
+  'id: "onnx-community/whisper-base"',
+  'id: "onnx-community/whisper-small"',
+  "models: browserTranscriptionModels()",
+  "maxIdleResidentModels: 1",
+  'eviction: "dispose-superseded"',
   'requiredAcceleration: "webgpu"',
   "server: false",
   "python: false",
@@ -50,4 +56,4 @@ const wasm = await stat(wasmPath);
 if (wasm.size < 1000) {
   throw new Error("Rust WebAssembly asset is unexpectedly small.");
 }
-console.log(`Verified static Pages export (${wasm.size} byte WASM asset plus finite-file Whisper Tiny transcription runtime).`);
+console.log(`Verified static Pages export (${wasm.size} byte WASM asset plus selectable finite-file Whisper transcription runtime).`);
