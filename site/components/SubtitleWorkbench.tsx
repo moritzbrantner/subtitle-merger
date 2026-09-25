@@ -147,7 +147,7 @@ function browserGenerationDescription(
   if (!support.available) {
     return support.reason;
   }
-  return "Runs locally in this browser; model assets are cached after first use.";
+  return "Whisper Tiny runs locally in this browser; model assets are cached after first use.";
 }
 
 function formatByteCount(bytes: number) {
