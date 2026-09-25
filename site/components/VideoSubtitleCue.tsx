@@ -59,8 +59,8 @@ export function VideoSubtitleCue({
   onCancelTextEdit,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<DragGesture>();
-  const previewRef = useRef<CuePlacement>();
+  const dragRef = useRef<DragGesture | undefined>(undefined);
+  const previewRef = useRef<CuePlacement | undefined>(undefined);
   const [preview, setPreview] = useState<CuePlacement>();
   const displayedPlacement = preview ?? placement;
 
@@ -92,7 +92,6 @@ export function VideoSubtitleCue({
     };
     setPreviewPlacement(placement);
     event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
   }
 
   function moveDrag(event: PointerEvent<HTMLButtonElement>) {
