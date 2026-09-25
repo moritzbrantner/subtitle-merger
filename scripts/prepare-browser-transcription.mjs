@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const audioAnalysisRevision = "bf2cb13d155a874b166305da2f8dc669a05a2a58";
+const audioAnalysisRevision = "6be8b6f35b3d758cd2a87e7ee1dec5540330a426";
 const audioAnalysisRepository = "https://github.com/moritzbrantner/audio-analysis.git";
 const sourcePath = "packages/audio-analysis-transcription-wasm/index.js";
 const publicDirectory = resolve(repositoryRoot, "site", "public");
@@ -31,10 +31,14 @@ try {
 
   const runtime = await readFile(resolve(worktree, sourcePath), "utf8");
   const requiredContract = [
+    "export function browserTranscriptionModels()",
     "export function browserTranscriptionCapabilities()",
     "export async function supportsBrowserTranscription()",
     "export async function transcribeAudioBlob",
-    'const DEFAULT_BROWSER_MODEL_ID = "onnx-community/whisper-tiny";',
+    'id: "onnx-community/whisper-tiny"',
+    'id: "onnx-community/whisper-base"',
+    'id: "onnx-community/whisper-small"',
+    "models: browserTranscriptionModels()",
     'requiredAcceleration: "webgpu"',
     "translation: false",
     "server: false",
@@ -59,7 +63,7 @@ try {
   );
 
   console.log(
-    `Prepared the finite-file Whisper Tiny browser transcription runtime from audio-analysis ${audioAnalysisRevision}.`,
+    `Prepared the selectable finite-file Whisper browser transcription runtime from audio-analysis ${audioAnalysisRevision}.`,
   );
 } finally {
   await rm(worktree, { recursive: true, force: true });
