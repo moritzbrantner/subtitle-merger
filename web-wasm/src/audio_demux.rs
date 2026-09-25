@@ -509,7 +509,7 @@ impl AudioDemux {
                     });
                 }
                 0xA3 => {
-                    self.request_matroska_block(header, *time)?;
+                    self.pending_read = matroska_block_read_request(header, *time)?;
                 }
                 0xA0 => {
                     state.scopes.push(MatroskaScope {
@@ -524,32 +524,10 @@ impl AudioDemux {
             },
             MatroskaScopeKind::BlockGroup { cluster_time } => {
                 if header.id == 0xA1 {
-                    self.request_matroska_block(header, *cluster_time)?;
+                    self.pending_read = matroska_block_read_request(header, *cluster_time)?;
                 }
             }
         }
-        Ok(())
-    }
-
-    fn request_matroska_block(
-        &mut self,
-        header: EbmlHeader,
-        cluster_time: i64,
-    ) -> Result<(), String> {
-        if header.payload_length == 0 {
-            return Ok(());
-        }
-        let prefix = header.payload_length.min(HEADER_READ_BYTES as u64);
-        self.pending_read = Some(ReadRequest {
-            offset: header.payload_offset,
-            length: checked_read_length(prefix)?,
-            phase: "Identifying Matroska audio block",
-            purpose: ReadPurpose::MatroskaBlockPrefix {
-                payload_offset: header.payload_offset,
-                payload_length: header.payload_length,
-                cluster_time,
-            },
-        });
         Ok(())
     }
 
@@ -916,6 +894,26 @@ fn build_audio_batches(mut chunks: Vec<AudioChunk>) -> Result<VecDeque<AudioBatc
         batches.push_back(batch);
     }
     Ok(batches)
+}
+
+fn matroska_block_read_request(
+    header: EbmlHeader,
+    cluster_time: i64,
+) -> Result<Option<ReadRequest>, String> {
+    if header.payload_length == 0 {
+        return Ok(None);
+    }
+    let prefix = header.payload_length.min(HEADER_READ_BYTES as u64);
+    Ok(Some(ReadRequest {
+        offset: header.payload_offset,
+        length: checked_read_length(prefix)?,
+        phase: "Identifying Matroska audio block",
+        purpose: ReadPurpose::MatroskaBlockPrefix {
+            payload_offset: header.payload_offset,
+            payload_length: header.payload_length,
+            cluster_time,
+        },
+    }))
 }
 
 fn parse_matroska_audio_track(bytes: &[u8]) -> Option<MatroskaAudioTrack> {
