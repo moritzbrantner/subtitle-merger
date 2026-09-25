@@ -92,7 +92,7 @@ export function createBrowserDecodedAudioTranscriptionSession(options = {}) {
         throw new Error("WebCodecs did not produce non-silent decoded audio.");
       }
       const label = models.find((model) => model.id === options.modelId)?.label ?? options.modelId;
-      const text = `Range decoded with ${label}`;
+      const text = "Range decoded with " + label;
       return {
         text,
         language: "en",
