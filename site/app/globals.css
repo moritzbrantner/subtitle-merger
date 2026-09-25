@@ -315,6 +315,11 @@ button.file-target:disabled:hover {
   pointer-events: auto;
 }
 
+.video-subtitle-cue-shell.is-selected,
+.video-subtitle-cue-shell.is-editing {
+  z-index: 3;
+}
+
 .video-subtitle-cue {
   display: block;
   max-width: 100%;
