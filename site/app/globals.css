@@ -247,6 +247,22 @@ button.file-target:disabled:hover {
   line-height: 1.55;
 }
 
+.video-editor-stack {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: rgba(17, 21, 27, 0.9);
+}
+
+.video-editor-stack > .preview-panel,
+.video-editor-stack > .tracks-panel {
+  border: 0;
+  background: transparent;
+}
+
+.video-editor-stack > .tracks-panel {
+  border-top: 1px solid var(--border);
+}
+
 .preview-panel {
   overflow: hidden;
 }
@@ -286,34 +302,69 @@ button.file-target:disabled:hover {
 
 .subtitle-overlay {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  bottom: 70px;
-  display: grid;
-  justify-items: center;
-  gap: 5px;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
   pointer-events: none;
 }
 
-.subtitle-overlay p {
-  max-width: 1000px;
-  margin: 0;
-  padding: 5px 9px;
+.video-subtitle-cue-shell {
+  position: absolute;
+  max-width: min(84%, 1000px);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.video-subtitle-cue {
+  display: block;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.82);
   color: white;
-  text-align: center;
+  padding: 5px 9px;
+  cursor: grab;
+  touch-action: none;
   font-size: clamp(1rem, 2.1vw, 1.55rem);
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
   white-space: pre-line;
+  text-shadow: 0 1px 2px black;
+  user-select: none;
+}
+
+.video-subtitle-cue:hover,
+.video-subtitle-cue:focus-visible,
+.video-subtitle-cue-shell.is-selected .video-subtitle-cue {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.video-subtitle-cue:active {
+  cursor: grabbing;
+}
+
+.video-subtitle-text-editor {
+  width: min(70vw, 760px);
+  max-width: 100%;
+  min-width: 18rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.92);
+  color: white;
+  padding: 7px 10px;
+  resize: both;
+  font: inherit;
+  font-size: clamp(1rem, 2.1vw, 1.55rem);
+  line-height: 1.35;
+  text-align: center;
   text-shadow: 0 1px 2px black;
 }
 
-.subtitle-overlay span {
-  margin-right: 7px;
-  color: var(--accent-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.6em;
-  text-transform: uppercase;
+.video-subtitle-text-editor:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }
 
 .timeline {
@@ -326,8 +377,19 @@ button.file-target:disabled:hover {
   margin-left: 300px;
   padding: 8px 0;
   color: var(--muted);
+  cursor: ew-resize;
+  touch-action: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.68rem;
+}
+
+.timeline-ruler:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.timeline-ruler span {
+  pointer-events: none;
 }
 
 .timeline-ruler span:nth-child(2) {
@@ -346,37 +408,45 @@ button.file-target:disabled:hover {
 }
 
 .track-label {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 14px 10px 0;
+  gap: 10px;
+  padding: 6px 10px 6px 12px;
   border-right: 1px solid var(--border);
 }
 
-.track-label label {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.track-label.is-selected {
+  background: rgba(123, 214, 255, 0.055);
 }
 
-.track-label label span {
+.track-select-button {
   min-width: 0;
   display: grid;
   gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 4px 2px;
+  cursor: pointer;
+  text-align: left;
 }
 
-.track-label strong,
-.track-label small {
+.track-select-button strong,
+.track-select-button small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.track-label small {
+.track-select-button small {
   color: var(--muted);
   font-size: 0.68rem;
+}
+
+.track-select-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .text-button,
@@ -394,7 +464,20 @@ button.file-target:disabled:hover {
   background:
     linear-gradient(to right, transparent 49.9%, rgba(255, 255, 255, 0.05) 50%, transparent 50.1%),
     var(--surface-raised);
+  cursor: ew-resize;
+  touch-action: none;
   overflow: hidden;
+}
+
+.timeline-playhead {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  transform: translateX(-1px);
 }
 
 .cue-block {
