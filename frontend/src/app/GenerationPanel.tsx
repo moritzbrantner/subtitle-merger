@@ -43,7 +43,13 @@ export function GenerationPanel({
         <p className="eyebrow">{messages.automaticSubtitles}</p>
         <h2 id="generation-heading">{messages.generateSubtitles}</h2>
         <p>{messages.generationDescription}</p>
-        <p>{messages.modelSetupNotice}</p>
+        {readiness ? (
+          <p>
+            {readiness.modelDownloadsAutomatic
+              ? messages.modelSetupNotice
+              : messages.modelCacheOnlyNotice}
+          </p>
+        ) : null}
         {readiness ? (
           <details>
             <summary>{messages.modelCache}</summary>

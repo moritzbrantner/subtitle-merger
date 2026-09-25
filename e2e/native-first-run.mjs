@@ -199,6 +199,13 @@ async function generate(stage, videoPath, env, targetLanguage = '', sourceLangua
     await dialog.getByRole('button', { name: 'Load video' }).click()
     await expect(dialog).toHaveCount(0, { timeout: 60000 })
     await expect(page.getByTestId('reference-video')).toBeVisible()
+    if (env.SUBTITLE_MODEL_CACHE_ONLY === '1') {
+      await expect(page.getByText('Automatic AI model downloads are disabled.', { exact: false })).toBeVisible()
+      await expect(page.getByText('Missing AI models download automatically', { exact: false })).toHaveCount(0)
+    } else {
+      await expect(page.getByText('Missing AI models download automatically', { exact: false })).toBeVisible()
+      await expect(page.getByText('Automatic AI model downloads are disabled.', { exact: false })).toHaveCount(0)
+    }
     await page.getByRole('combobox', { name: 'Spoken language' }).selectOption(sourceLanguage)
     if (targetLanguage) await page.getByRole('combobox', { name: 'Translate to' }).selectOption(targetLanguage)
     const created = page.waitForResponse((response) => response.url().endsWith('/api/subtitle-jobs') && response.request().method() === 'POST')

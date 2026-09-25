@@ -28,6 +28,7 @@ export type AppMessages = {
   generateSubtitles: string
   generationDescription: string
   modelSetupNotice: string
+  modelCacheOnlyNotice: string
   speakerUnavailable: string
   modelCache: string
   sourceLanguage: string
@@ -86,6 +87,7 @@ const messages: Record<Locale, AppMessages> = {
     generateSubtitles: 'Generate subtitles',
     generationDescription: 'Creates an editable source track and optional translated track.',
     modelSetupNotice: 'Missing AI models download automatically when you generate subtitles. The first run needs internet access and free disk space; cached models are reused. Translation downloads only the models for the requested languages.',
+    modelCacheOnlyNotice: 'Automatic AI model downloads are disabled. Subtitle generation uses only models already present in the model cache; missing models will cause generation to fail.',
     speakerUnavailable: 'Speaker identification is not included in this build.',
     modelCache: 'Model cache',
     sourceLanguage: 'Spoken language',
@@ -157,6 +159,7 @@ const messages: Record<Locale, AppMessages> = {
     generateSubtitles: 'Untertitel erzeugen',
     generationDescription: 'Erstellt eine bearbeitbare Quellspur und optional eine übersetzte Spur.',
     modelSetupNotice: 'Fehlende KI-Modelle werden beim Erzeugen automatisch heruntergeladen. Der erste Durchlauf benötigt Internet und freien Speicherplatz; vorhandene Modelle werden wiederverwendet. Für Übersetzungen werden nur die benötigten Sprachmodelle geladen.',
+    modelCacheOnlyNotice: 'Automatische Downloads von KI-Modellen sind deaktiviert. Die Untertitelerzeugung verwendet nur Modelle, die bereits im Modell-Cache vorhanden sind; fehlende Modelle führen zu einem Fehler.',
     speakerUnavailable: 'Sprechererkennung ist in dieser Version nicht enthalten.',
     modelCache: 'Modell-Cache',
     sourceLanguage: 'Gesprochene Sprache',
@@ -228,6 +231,7 @@ const messages: Record<Locale, AppMessages> = {
     generateSubtitles: 'Generar subtítulos',
     generationDescription: 'Crea una pista fuente editable y una pista traducida opcional.',
     modelSetupNotice: 'Los modelos de IA que falten se descargan al generar subtítulos. La primera ejecución necesita internet y espacio libre; los modelos guardados se reutilizan. La traducción descarga solo los modelos de los idiomas solicitados.',
+    modelCacheOnlyNotice: 'Las descargas automáticas de modelos de IA están desactivadas. La generación de subtítulos usa solo los modelos que ya están en la caché; si falta un modelo, la generación fallará.',
     speakerUnavailable: 'La identificación de hablantes no está incluida en esta versión.',
     modelCache: 'Caché de modelos',
     sourceLanguage: 'Idioma hablado',
