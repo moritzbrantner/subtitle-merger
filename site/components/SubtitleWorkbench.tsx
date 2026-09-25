@@ -231,18 +231,29 @@ export function SubtitleWorkbench() {
 
   useEffect(() => {
     let active = true;
-    void inspectBrowserTranscriptionSupport().then((support) => {
-      if (active) {
-        setBrowserTranscriptionSupport(support);
-        if (support.available) {
-          setBrowserTranscriptionModelId((current) =>
-            support.models.some((model) => model.id === current)
-              ? current
-              : support.modelId,
-          );
+    inspectBrowserTranscriptionSupport()
+      .then((support) => {
+        if (active) {
+          setBrowserTranscriptionSupport(support);
+          if (support.available) {
+            setBrowserTranscriptionModelId((current) =>
+              support.models.some((model) => model.id === current)
+                ? current
+                : support.modelId,
+            );
+          }
         }
-      }
-    });
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setBrowserTranscriptionSupport({
+            available: false,
+            reason: cause instanceof Error
+              ? cause.message
+              : "Browser transcription is unavailable.",
+          });
+        }
+      });
     return () => {
       active = false;
     };
@@ -528,6 +539,16 @@ export function SubtitleWorkbench() {
       setGeneratingSubtitles(false);
       setBusy("");
     }
+  }
+
+  function handleGenerateSubtitlesClick() {
+    handleGenerateSubtitles().catch((cause: unknown) => {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Browser subtitle generation failed.",
+      );
+    });
   }
 
   function toggleTrack(id: string) {
@@ -1109,7 +1130,7 @@ export function SubtitleWorkbench() {
                 || browserTranscriptionSupport?.available !== true
                 || !selectedBrowserTranscriptionModel
               }
-              onClick={() => void handleGenerateSubtitles()}
+              onClick={handleGenerateSubtitlesClick}
             >
               <span className="file-target-label">Generate subtitles</span>
               <strong>
