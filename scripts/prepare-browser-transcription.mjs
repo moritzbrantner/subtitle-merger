@@ -34,9 +34,7 @@ try {
     "export function browserTranscriptionCapabilities()",
     "export async function supportsBrowserTranscription()",
     "export async function transcribeAudioBlob",
-    "export async function createBrowserMediaStreamTranscriptionSession",
-    "boundedPcmStreaming: true",
-    "mediaStreamAdapter: true",
+    'const DEFAULT_BROWSER_MODEL_ID = "onnx-community/whisper-tiny";',
     'requiredAcceleration: "webgpu"',
     "translation: false",
     "server: false",
@@ -61,7 +59,7 @@ try {
   );
 
   console.log(
-    `Prepared the Native WhisperX browser transcription runtime from audio-analysis ${audioAnalysisRevision}.`,
+    `Prepared the finite-file Whisper Tiny browser transcription runtime from audio-analysis ${audioAnalysisRevision}.`,
   );
 } finally {
   await rm(worktree, { recursive: true, force: true });
