@@ -220,7 +220,7 @@ export function SubtitleWorkbench() {
   const cueEditInFlightRef = useRef(false);
   const qualityRequestRef = useRef(0);
   const cueTextRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
-  const timelineScrubPointerRef = useRef<number>();
+  const timelineScrubPointerRef = useRef<number | undefined>(undefined);
   const [videoFile, setVideoFile] = useState<File>();
   const [videoUrl, setVideoUrl] = useState("");
   const [inspection, setInspection] = useState<VideoInspection>();
@@ -1354,7 +1354,7 @@ export function SubtitleWorkbench() {
                         onBeginTextEdit={() => beginInlineCueEdit(track, cueIndex, cue)}
                         onEditTextChange={(rawText) =>
                           setInlineCueEdit((current) =>
-                            selectionMatches(current, track.id, cueIndex)
+                            current && selectionMatches(current, track.id, cueIndex)
                               ? { ...current, rawText }
                               : current,
                           )
@@ -1413,7 +1413,7 @@ export function SubtitleWorkbench() {
             Embedded text tracks appear here after video inspection. You can also add subtitle files before or after selecting a video.
           </p>
         ) : (
-          <div className="timeline" role="list" data-testid="subtitle-timeline">
+          <div className="timeline" data-testid="subtitle-timeline">
             <div
               className="timeline-ruler"
               role="slider"
@@ -1435,7 +1435,7 @@ export function SubtitleWorkbench() {
               <span>{formatClock(durationMs)}</span>
             </div>
             {tracks.map((track) => (
-              <div className="timeline-row" role="listitem" key={track.id}>
+              <div className="timeline-row" key={track.id}>
                 <div className={`track-label${selectedTrack?.id === track.id ? " is-selected" : ""}`}>
                   <input
                     type="checkbox"
