@@ -120,6 +120,7 @@ test('opens, generates, edits and exports subtitles through the application shel
     expect(route.request().method()).toBe('POST')
     const body = route.request().postData() ?? ''
     expect(body).toContain('name="mediaId"')
+    expect(body).toContain('name="sourceLanguage"')
     expect(body).not.toContain('filename=')
     await route.fulfill({ contentType: 'application/json', json: queuedJob })
   })
@@ -165,6 +166,7 @@ test('opens, generates, edits and exports subtitles through the application shel
   await expect(page.getByRole('heading', { name: 'Generate subtitles' })).toBeVisible()
   await expect(page.getByRole('checkbox', { name: 'Identify speakers' })).toBeDisabled()
   await expect(page.getByText(/Missing AI models download automatically/)).toBeVisible()
+  await page.getByRole('combobox', { name: 'Spoken language' }).selectOption('en')
 
   const referenceAudioClip = page.locator(
     `[data-slot="timeline-editor-clip"][aria-label="${fixtureFilename}"]`,

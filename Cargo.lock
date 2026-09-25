@@ -1764,7 +1764,7 @@ dependencies = [
 [[package]]
 name = "native-whisperx"
 version = "0.1.14"
-source = "git+https://github.com/moritzbrantner/native-whisperx?rev=ea3f5bb8ecb40252f8b6cc36805bc65419cdc21c#ea3f5bb8ecb40252f8b6cc36805bc65419cdc21c"
+source = "git+https://github.com/moritzbrantner/native-whisperx?rev=bd7f6a745de75367b0cfe4774581445a26017528#bd7f6a745de75367b0cfe4774581445a26017528"
 dependencies = [
  "candle-core",
  "candle-nn",
