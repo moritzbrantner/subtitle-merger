@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
 use super::{
-    be_u16, be_u32, build_mp4_sample_offsets, child_box, ebml_elements, ebml_float, ebml_uint,
-    expand_mp4_timings, mp4_boxes, parse_hdlr, parse_mdhd, parse_mp4_sample_table, push_json_string,
-    read_ebml_vint, return_json, EbmlElement, Mp4Box,
+    be_u16, be_u32, be_u64, build_mp4_sample_offsets, child_box, ebml_elements, ebml_float,
+    ebml_uint, expand_mp4_timings, mp4_boxes, parse_hdlr, parse_mdhd, parse_mp4_sample_table,
+    parse_mvhd_timescale, push_json_string, read_ebml_vint, return_json, EbmlElement, Mp4Box,
 };
 
 const HEADER_READ_BYTES: u32 = 32;
@@ -116,7 +116,7 @@ struct MatroskaScope {
 enum MatroskaScopeKind {
     Top,
     Segment,
-    Cluster { time: i64 },
+    Cluster { time: i64, unknown_size: bool },
     BlockGroup { cluster_time: i64 },
 }
 
@@ -132,6 +132,7 @@ struct EbmlHeader {
     payload_offset: u64,
     payload_length: u64,
     end: u64,
+    unknown_size: bool,
 }
 
 impl AudioDemux {
@@ -390,12 +391,16 @@ impl AudioDemux {
                 "The requested MP4 metadata range did not contain a complete moov box.".to_string()
             })?;
 
+        let movie_timescale = child_box(bytes, moov, b"mvhd")
+            .and_then(|mvhd| parse_mvhd_timescale(bytes, mvhd))
+            .unwrap_or(0);
+
         let mut plan = None;
         for trak in mp4_boxes(bytes, moov.payload_start, moov.end)
             .into_iter()
             .filter(|item| &item.kind == b"trak")
         {
-            if let Some(candidate) = plan_mp4_audio_track(bytes, trak)? {
+            if let Some(candidate) = plan_mp4_audio_track(bytes, trak, movie_timescale)? {
                 plan = Some(candidate);
                 break;
             }
@@ -458,6 +463,24 @@ impl AudioDemux {
             .ok_or_else(|| "Matroska scope stack is empty.".to_string())?;
         let scope_end = state.scopes[scope_depth].end;
         let header = parse_ebml_header(bytes, offset, scope_end)?;
+
+        let closes_unknown_cluster = matches!(
+            &state.scopes[scope_depth].kind,
+            MatroskaScopeKind::Cluster {
+                unknown_size: true,
+                ..
+            }
+        ) && is_matroska_segment_child(header.id);
+        if closes_unknown_cluster {
+            state.scopes.pop();
+            let parent = state
+                .scopes
+                .last_mut()
+                .ok_or_else(|| "Unknown-size Matroska Cluster had no Segment parent.".to_string())?;
+            parent.offset = offset;
+            return Ok(());
+        }
+
         state.scopes[scope_depth].offset = header.end;
 
         match &state.scopes[scope_depth].kind {
@@ -494,12 +517,15 @@ impl AudioDemux {
                     state.scopes.push(MatroskaScope {
                         offset: header.payload_offset,
                         end: header.end,
-                        kind: MatroskaScopeKind::Cluster { time: 0 },
+                        kind: MatroskaScopeKind::Cluster {
+                            time: 0,
+                            unknown_size: header.unknown_size,
+                        },
                     });
                 }
                 _ => {}
             },
-            MatroskaScopeKind::Cluster { time } => match header.id {
+            MatroskaScopeKind::Cluster { time, .. } => match header.id {
                 0xE7 => {
                     self.pending_read = Some(ReadRequest {
                         offset: header.payload_offset,
@@ -591,7 +617,7 @@ impl AudioDemux {
         let Some(scope) = state.scopes.get_mut(scope_depth) else {
             return Err("Matroska cluster scope disappeared.".into());
         };
-        if let MatroskaScopeKind::Cluster { time } = &mut scope.kind {
+        if let MatroskaScopeKind::Cluster { time, .. } = &mut scope.kind {
             *time = value.min(i64::MAX as u64) as i64;
         }
         Ok(())
@@ -699,7 +725,17 @@ struct Mp4AudioPlan {
     batches: VecDeque<AudioBatch>,
 }
 
-fn plan_mp4_audio_track(bytes: &[u8], trak: Mp4Box) -> Result<Option<Mp4AudioPlan>, String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mp4Edit {
+    segment_duration: u64,
+    media_time: i64,
+}
+
+fn plan_mp4_audio_track(
+    bytes: &[u8],
+    trak: Mp4Box,
+    movie_timescale: u64,
+) -> Result<Option<Mp4AudioPlan>, String> {
     let Some(mdia) = child_box(bytes, trak, b"mdia") else {
         return Ok(None);
     };
@@ -730,6 +766,10 @@ fn plan_mp4_audio_track(bytes: &[u8], trak: Mp4Box) -> Result<Option<Mp4AudioPla
         .find(|item| &item.kind == b"stsd")
         .ok_or_else(|| "MP4 AAC track has no sample description.".to_string())?;
     let config = parse_mp4_aac_config(bytes, stsd)?;
+    let edits = parse_mp4_edit_list(bytes, trak)?;
+    if !edits.is_empty() && movie_timescale == 0 {
+        return Err("MP4 audio edit list cannot be applied without a movie timescale.".into());
+    }
 
     let offsets = build_mp4_sample_offsets(&table)
         .map_err(|message| format!("MP4 AAC sample mapping failed: {message}"))?;
@@ -739,20 +779,138 @@ fn plan_mp4_audio_track(bytes: &[u8], trak: Mp4Box) -> Result<Option<Mp4AudioPla
         let Some((start_units, duration_units)) = timings.get(index).copied() else {
             break;
         };
+        let timestamp_us = if edits.is_empty() {
+            units_to_us(start_units, timescale)
+        } else {
+            let Some(timestamp_us) =
+                map_mp4_edit_timestamp_us(start_units, timescale, movie_timescale, &edits)
+            else {
+                continue;
+            };
+            timestamp_us
+        };
         chunks.push(AudioChunk {
             offset,
             length: size,
-            timestamp_us: units_to_us(start_units, timescale),
+            timestamp_us,
             duration_us: Some(units_to_us(duration_units, timescale)),
         });
     }
     if chunks.is_empty() {
-        return Err("MP4 AAC track contains no decodable audio samples.".into());
+        return Err("MP4 AAC track contains no decodable audio samples in its presentation edits.".into());
     }
     Ok(Some(Mp4AudioPlan {
         config,
         batches: build_audio_batches(chunks)?,
     }))
+}
+
+fn parse_mp4_edit_list(bytes: &[u8], trak: Mp4Box) -> Result<Vec<Mp4Edit>, String> {
+    let Some(edts) = child_box(bytes, trak, b"edts") else {
+        return Ok(Vec::new());
+    };
+    let Some(elst) = child_box(bytes, edts, b"elst") else {
+        return Ok(Vec::new());
+    };
+    let version = *bytes
+        .get(elst.payload_start)
+        .ok_or_else(|| "MP4 edit list is truncated.".to_string())?;
+    if version > 1 {
+        return Err(format!("MP4 edit list version {version} is not supported."));
+    }
+    let count = be_u32(bytes, elst.payload_start + 4)
+        .ok_or_else(|| "MP4 edit list entry count is truncated.".to_string())?
+        as usize;
+    let entry_size = if version == 1 { 20 } else { 12 };
+    let mut cursor = elst.payload_start + 8;
+    let mut edits = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        let end = cursor
+            .checked_add(entry_size)
+            .filter(|end| *end <= elst.end)
+            .ok_or_else(|| "MP4 edit list entry is truncated.".to_string())?;
+        let (segment_duration, media_time, rate_offset) = if version == 1 {
+            (
+                be_u64(bytes, cursor)
+                    .ok_or_else(|| "MP4 edit duration is truncated.".to_string())?,
+                be_u64(bytes, cursor + 8)
+                    .map(|value| value as i64)
+                    .ok_or_else(|| "MP4 edit media time is truncated.".to_string())?,
+                cursor + 16,
+            )
+        } else {
+            (
+                be_u32(bytes, cursor)
+                    .map(u64::from)
+                    .ok_or_else(|| "MP4 edit duration is truncated.".to_string())?,
+                be_u32(bytes, cursor + 4)
+                    .map(|value| (value as i32) as i64)
+                    .ok_or_else(|| "MP4 edit media time is truncated.".to_string())?,
+                cursor + 8,
+            )
+        };
+        let rate_integer = be_u16(bytes, rate_offset)
+            .map(|value| value as i16)
+            .ok_or_else(|| "MP4 edit media rate is truncated.".to_string())?;
+        let rate_fraction = be_u16(bytes, rate_offset + 2)
+            .map(|value| value as i16)
+            .ok_or_else(|| "MP4 edit media rate is truncated.".to_string())?;
+        if rate_integer != 1 || rate_fraction != 0 {
+            return Err("MP4 browser audio demux supports only 1.0 edit-list media rates.".into());
+        }
+        if media_time < -1 {
+            return Err("MP4 edit list contains an invalid negative media time.".into());
+        }
+        edits.push(Mp4Edit {
+            segment_duration,
+            media_time,
+        });
+        cursor = end;
+    }
+
+    Ok(edits)
+}
+
+fn map_mp4_edit_timestamp_us(
+    media_start: u64,
+    media_timescale: u64,
+    movie_timescale: u64,
+    edits: &[Mp4Edit],
+) -> Option<u64> {
+    if media_timescale == 0 || movie_timescale == 0 {
+        return None;
+    }
+    let mut presentation_cursor = 0_u64;
+    for edit in edits {
+        if edit.media_time == -1 {
+            presentation_cursor = presentation_cursor.saturating_add(edit.segment_duration);
+            continue;
+        }
+        let edit_media_start = u64::try_from(edit.media_time).ok()?;
+        if media_start >= edit_media_start {
+            let media_delta = media_start - edit_media_start;
+            let movie_delta = scale_units(media_delta, movie_timescale, media_timescale)?;
+            if movie_delta < edit.segment_duration {
+                return Some(units_to_us(
+                    presentation_cursor.saturating_add(movie_delta),
+                    movie_timescale,
+                ));
+            }
+        }
+        presentation_cursor = presentation_cursor.saturating_add(edit.segment_duration);
+    }
+    None
+}
+
+fn scale_units(value: u64, numerator: u64, denominator: u64) -> Option<u64> {
+    if denominator == 0 {
+        return None;
+    }
+    let scaled = (value as u128)
+        .saturating_mul(numerator as u128)
+        .checked_div(denominator as u128)?;
+    u64::try_from(scaled).ok()
 }
 
 fn parse_mp4_aac_config(bytes: &[u8], stsd: Mp4Box) -> Result<AudioDecoderConfig, String> {
@@ -1152,7 +1310,22 @@ fn parse_ebml_header(bytes: &[u8], offset: u64, scope_end: u64) -> Result<EbmlHe
         payload_offset,
         payload_length: end.saturating_sub(payload_offset),
         end,
+        unknown_size: unknown,
     })
+}
+
+fn is_matroska_segment_child(id: u64) -> bool {
+    matches!(
+        id,
+        0x114D_9B74
+            | 0x1549_A966
+            | 0x1654_AE6B
+            | 0x1F43_B675
+            | 0x1C53_BB6B
+            | 0x1941_A469
+            | 0x1043_A770
+            | 0x1254_C367
+    )
 }
 
 fn units_to_us(units: u64, timescale: u64) -> u64 {
@@ -1295,4 +1468,130 @@ mod tests {
         assert_eq!(batches.len(), 2);
         assert!(batches.iter().all(|batch| batch.length as u64 <= MAX_AUDIO_BATCH_BYTES));
     }
+
+    fn mp4_box(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let size = u32::try_from(payload.len() + 8).expect("test box fits in u32");
+        let mut bytes = Vec::with_capacity(size as usize);
+        bytes.extend_from_slice(&size.to_be_bytes());
+        bytes.extend_from_slice(kind);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    #[test]
+    fn mp4_edit_list_maps_empty_edit_and_trimmed_media() {
+        let edits = vec![
+            Mp4Edit {
+                segment_duration: 2_000,
+                media_time: -1,
+            },
+            Mp4Edit {
+                segment_duration: 5_000,
+                media_time: 144_000,
+            },
+        ];
+
+        assert_eq!(map_mp4_edit_timestamp_us(96_000, 48_000, 1_000, &edits), None);
+        assert_eq!(
+            map_mp4_edit_timestamp_us(144_000, 48_000, 1_000, &edits),
+            Some(2_000_000)
+        );
+        assert_eq!(
+            map_mp4_edit_timestamp_us(216_000, 48_000, 1_000, &edits),
+            Some(3_500_000)
+        );
+        assert_eq!(map_mp4_edit_timestamp_us(384_000, 48_000, 1_000, &edits), None);
+    }
+
+    #[test]
+    fn mp4_edit_list_parser_preserves_empty_and_media_edits() {
+        let mut elst_payload = vec![0, 0, 0, 0];
+        elst_payload.extend_from_slice(&2_u32.to_be_bytes());
+        elst_payload.extend_from_slice(&2_000_u32.to_be_bytes());
+        elst_payload.extend_from_slice(&u32::MAX.to_be_bytes());
+        elst_payload.extend_from_slice(&1_i16.to_be_bytes());
+        elst_payload.extend_from_slice(&0_i16.to_be_bytes());
+        elst_payload.extend_from_slice(&5_000_u32.to_be_bytes());
+        elst_payload.extend_from_slice(&144_000_u32.to_be_bytes());
+        elst_payload.extend_from_slice(&1_i16.to_be_bytes());
+        elst_payload.extend_from_slice(&0_i16.to_be_bytes());
+
+        let elst = mp4_box(b"elst", &elst_payload);
+        let edts = mp4_box(b"edts", &elst);
+        let trak_bytes = mp4_box(b"trak", &edts);
+        let trak = mp4_boxes(&trak_bytes, 0, trak_bytes.len())
+            .into_iter()
+            .next()
+            .expect("trak");
+
+        assert_eq!(
+            parse_mp4_edit_list(&trak_bytes, trak).expect("edit list"),
+            vec![
+                Mp4Edit {
+                    segment_duration: 2_000,
+                    media_time: -1,
+                },
+                Mp4Edit {
+                    segment_duration: 5_000,
+                    media_time: 144_000,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn unknown_size_cluster_rewinds_to_sibling_cluster() {
+        let file_len = 128_u64;
+        let unknown_cluster =
+            parse_ebml_header(&[0x1f, 0x43, 0xb6, 0x75, 0xff], 0, file_len)
+                .expect("unknown cluster");
+        assert!(unknown_cluster.unknown_size);
+
+        let mut demux = AudioDemux {
+            file_len,
+            state: DemuxState::Matroska(MatroskaAudioState {
+                scopes: vec![
+                    MatroskaScope {
+                        offset: file_len,
+                        end: file_len,
+                        kind: MatroskaScopeKind::Segment,
+                    },
+                    MatroskaScope {
+                        offset: 64,
+                        end: file_len,
+                        kind: MatroskaScopeKind::Cluster {
+                            time: 0,
+                            unknown_size: true,
+                        },
+                    },
+                ],
+                segment_seen: true,
+                timestamp_scale: 1_000_000,
+                audio_track: None,
+            }),
+            pending_read: None,
+            pending_config: None,
+            config_delivered: false,
+            pending_batch: None,
+            done: false,
+            error: None,
+        };
+
+        demux
+            .consume_matroska_header(64, &[0x1f, 0x43, 0xb6, 0x75, 0x81, 0x00])
+            .expect("sibling cluster boundary");
+
+        let DemuxState::Matroska(state) = &demux.state else {
+            panic!("matroska state");
+        };
+        assert_eq!(state.scopes.len(), 1);
+        assert_eq!(state.scopes[0].offset, 64);
+
+        demux.advance();
+        assert_eq!(
+            demux.pending_read.as_ref().map(|request| request.offset),
+            Some(64)
+        );
+    }
+
 }
