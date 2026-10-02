@@ -38,7 +38,7 @@ frontend/   React + TypeScript Vite editor
 site/       Static Next.js GitHub Pages application
 web-wasm/   Dependency-free Rust browser core compiled to WebAssembly
 e2e/        Browser acceptance workflows
-docs/       ADRs and optional agent/orchestrator metadata
+docs/       ADRs and development notes
 ```
 
 ## Development
