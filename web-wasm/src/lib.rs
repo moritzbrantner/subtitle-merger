@@ -459,17 +459,25 @@ fn inspect_mp4(bytes: &[u8]) -> VideoInspection {
     }
 }
 
-fn parse_mvhd_duration(bytes: &[u8], mvhd: Mp4Box) -> Option<u64> {
+fn parse_mvhd_timescale(bytes: &[u8], mvhd: Mp4Box) -> Option<u64> {
     let version = *bytes.get(mvhd.payload_start)?;
-    let (timescale_offset, duration_offset, duration_size) = if version == 1 {
-        (mvhd.payload_start + 20, mvhd.payload_start + 24, 8)
+    let timescale_offset = if version == 1 {
+        mvhd.payload_start + 20
     } else {
-        (mvhd.payload_start + 12, mvhd.payload_start + 16, 4)
+        mvhd.payload_start + 12
     };
     let timescale = be_u32(bytes, timescale_offset)? as u64;
-    if timescale == 0 {
-        return None;
-    }
+    (timescale != 0).then_some(timescale)
+}
+
+fn parse_mvhd_duration(bytes: &[u8], mvhd: Mp4Box) -> Option<u64> {
+    let version = *bytes.get(mvhd.payload_start)?;
+    let (duration_offset, duration_size) = if version == 1 {
+        (mvhd.payload_start + 24, 8)
+    } else {
+        (mvhd.payload_start + 16, 4)
+    };
+    let timescale = parse_mvhd_timescale(bytes, mvhd)?;
     let duration = if duration_size == 8 {
         be_u64(bytes, duration_offset)?
     } else {

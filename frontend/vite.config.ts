@@ -27,6 +27,13 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
+    // Timeline Editor stays source-first, but its UI dependency chain contains
+    // CommonJS shims. Serving these raw breaks ESM linking before App can mount.
+    // Production bundling handles them; ordinary Vite dev needs explicit entries.
+    include: [
+      'use-sync-external-store/shim',
+      'use-sync-external-store/shim/with-selector',
+    ],
     exclude: [
       '@moritzbrantner/timeline-editor',
       '@moritzbrantner/timeline-editor/audio',

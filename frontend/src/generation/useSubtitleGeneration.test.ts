@@ -14,6 +14,7 @@ const completedJob: SubtitleJob = {
 }
 const generationOptions = {
   video: { id: 'video-1', filename: 'movie.webm', mediaUrl: '/api/movie', mimeType: 'video/webm' },
+  sourceLanguage: 'en',
   diarize: false,
 }
 function callbacks() {
@@ -36,6 +37,9 @@ describe('subtitle generation controller', () => {
     const f = fixture()
     const events = callbacks()
     await f.controller.generate(generationOptions, getMessages('en'), events)
+    expect(f.startSubtitleGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceLanguage: 'en' }),
+    )
     expect(events.onGeneratingChange).toHaveBeenCalledExactlyOnceWith(true)
     f.update({ kind: 'snapshot', job: { ...queuedJob, state: 'running', phase: 'downloadingModels' } })
     expect(events.onMessage).toHaveBeenLastCalledWith('Downloading required models…')

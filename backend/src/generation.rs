@@ -29,11 +29,29 @@ const DEFAULT_MAX_UPLOAD_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 // Keep capability reporting and command validation together, not in the UI.
 const DIARIZATION_AVAILABLE: bool = false;
 
+fn env_flag(name: &str) -> bool {
+    env::var(name).is_ok_and(|value| {
+        matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+    })
+}
+
+fn recoverable_alignment_error(message: &str) -> bool {
+    message.contains("model_output_mismatch") && message.contains("CTC path is impossible")
+}
+
+fn completion_message(base: &str, alignment_warning: Option<&str>) -> String {
+    alignment_warning.map_or_else(
+        || base.to_string(),
+        |warning| format!("{base}; word alignment was skipped after a recoverable native alignment failure: {warning}"),
+    )
+}
+
 #[derive(Clone)]
 pub struct GenerationState {
     inner: Arc<Mutex<Inner>>,
     cache_dir: PathBuf,
     max_upload_bytes: u64,
+    model_cache_only: bool,
     events: Arc<Mutex<HashMap<String, broadcast::Sender<Job>>>>,
 }
 
@@ -118,12 +136,14 @@ impl GenerationState {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(DEFAULT_MAX_UPLOAD_BYTES);
+        let model_cache_only = env_flag("SUBTITLE_MODEL_CACHE_ONLY");
         Self {
             inner: Arc::new(Mutex::new(Inner {
                 sessions: HashMap::new(), jobs: HashMap::new(), active_job: None,
             })),
             cache_dir,
             max_upload_bytes,
+            model_cache_only,
             events: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -181,7 +201,7 @@ pub async fn preflight(State(app): State<AppState>) -> Json<PreflightResponse> {
         cache_dir: state.cache_dir.display().to_string(),
         max_upload_bytes: state.max_upload_bytes,
         native_whisperx_version: "0.1.14",
-        model_downloads_automatic: true,
+        model_downloads_automatic: !state.model_cache_only,
         diarization_available: DIARIZATION_AVAILABLE,
     })
 }
@@ -326,7 +346,12 @@ pub async fn events(State(app): State<AppState>, Path(id): Path<String>)
     }).keep_alive(KeepAlive::default()))
 }
 
-fn native_config(video_path: PathBuf, cache_dir: PathBuf, language: Option<String>) -> NativeWhisperxConfig {
+fn native_config(
+    video_path: PathBuf,
+    cache_dir: PathBuf,
+    language: Option<String>,
+    model_cache_only: bool,
+) -> NativeWhisperxConfig {
     let mut config = NativeWhisperxConfig {
         input: InputSource::Path { path: video_path },
         asr: Default::default(), translation: Default::default(), vad: Default::default(),
@@ -335,12 +360,14 @@ fn native_config(video_path: PathBuf, cache_dir: PathBuf, language: Option<Strin
     // Native WhisperX owns model resolution, downloads and cache reuse. These are
     // application policy, not a second model installer or a prerequisite setup step.
     config.asr.model_dir = Some(cache_dir.clone());
-    config.asr.model_cache_only = false;
+    config.asr.model_cache_only = model_cache_only;
     config.asr.language = language;
     config.alignment.model_dir = Some(cache_dir);
-    config.alignment.model_cache_only = false;
+    config.alignment.model_cache_only = model_cache_only;
     config.diarization.enabled = false;
-    config.output.formats.clear();
+    // Keep the native format contract valid. output_dir=None already disables
+    // file writes; clearing formats instead rejects every job before model setup.
+    config.output.output_dir = None;
     config
 }
 
@@ -350,8 +377,13 @@ fn run_native_job(
     source_language: Option<String>, target_language: Option<String>,
     cancellation: CancellationHandle, sender: broadcast::Sender<Job>, cache_dir: PathBuf,
 ) {
-    let config = native_config(video_path.clone(), cache_dir.clone(), source_language.clone());
-    let mut observer = SseObserver { state: state.clone(), job_id: job_id.clone(), sender: sender.clone() };
+    let model_cache_only = state.model_cache_only;
+    let config = native_config(
+        video_path.clone(), cache_dir.clone(), source_language.clone(), model_cache_only,
+    );
+    let mut observer = SseObserver {
+        state: state.clone(), job_id: job_id.clone(), sender: sender.clone(), alignment_attempted: false,
+    };
     observer.publish(JobPhase::CheckingModels);
 
     let result = if let Err(error) = std::fs::create_dir_all(&cache_dir) {
@@ -360,25 +392,51 @@ fn run_native_job(
             message: format!("Could not create model cache {}: {error}. Set SUBTITLE_MODEL_CACHE_DIR to a writable directory and retry.", cache_dir.display()),
         }
     } else {
-        match run_with_control(config, &mut observer, &cancellation) {
+        let initial = run_with_control(config, &mut observer, &cancellation);
+        let mut alignment_warning = None;
+        let transcription = match initial {
+            Err(error) if observer.alignment_attempted && recoverable_alignment_error(&error.to_string()) => {
+                let warning = error.to_string();
+                tracing::warn!(%warning, "native word alignment failed; retrying transcription without alignment");
+                alignment_warning = Some(warning);
+                let mut fallback = native_config(
+                    video_path.clone(), cache_dir.clone(), source_language.clone(), model_cache_only,
+                );
+                fallback.alignment.enabled = false;
+                observer.publish(JobPhase::Transcribing);
+                run_with_control(fallback, &mut observer, &cancellation)
+            }
+            other => other,
+        };
+        match transcription {
             Ok(FiniteTranscriptionOutcome::Completed(report)) => {
                 let source_track = track_from_transcript(&report.response.transcript, false);
+                let warning = alignment_warning.as_deref();
                 match target_language.as_deref() {
-                    None => NativeJobResult::Completed { source_track, translation_track: None, message: "source subtitles generated".to_string() },
+                    None => NativeJobResult::Completed {
+                        source_track,
+                        translation_track: None,
+                        message: completion_message("source subtitles generated", warning),
+                    },
                     Some(target_language) => match translate_track(
                         &report.response, source_language.as_deref(), target_language,
-                        &cache_dir, &video_path, &mut observer, &cancellation,
+                        &cache_dir, model_cache_only, &video_path, &mut observer, &cancellation,
                     ) {
                         TranslationAttempt::Completed(track) => NativeJobResult::Completed {
-                            source_track, translation_track: Some(track), message: "source and translated subtitles generated".to_string(),
+                            source_track,
+                            translation_track: Some(track),
+                            message: completion_message("source and translated subtitles generated", warning),
                         },
                         TranslationAttempt::SkippedSameLanguage => NativeJobResult::Completed {
-                            source_track, translation_track: None, message: "source subtitles generated; target language matches source".to_string(),
+                            source_track,
+                            translation_track: None,
+                            message: completion_message("source subtitles generated; target language matches source", warning),
                         },
                         TranslationAttempt::Cancelled => NativeJobResult::Cancelled { source_track: Some(source_track) },
                         TranslationAttempt::Failed(message) => NativeJobResult::Completed {
-                            source_track, translation_track: None,
-                            message: format!("source subtitles generated; translation failed: {message}. Check network access and cache permissions, then retry."),
+                            source_track,
+                            translation_track: None,
+                            message: format!("{}; translation failed: {message}. Check network access and cache permissions, then retry.", completion_message("source subtitles generated", warning)),
                         },
                     },
                 }
@@ -413,18 +471,18 @@ fn run_native_job(
     });
 }
 
-fn translation_config(cache_dir: PathBuf) -> NativeOpusMtTranslationProviderConfig {
+fn translation_config(cache_dir: PathBuf, model_cache_only: bool) -> NativeOpusMtTranslationProviderConfig {
     NativeOpusMtTranslationProviderConfig {
         model_dir: Some(cache_dir),
-        model_cache_only: false,
+        model_cache_only,
         ..Default::default()
     }
 }
 
 fn translate_track(
     response: &TranscriptionPipelineResponse, explicit_source_language: Option<&str>, target_language: &str,
-    cache_dir: &PathBuf, video_path: &PathBuf, observer: &mut dyn TranscriptionProgressObserver,
-    cancellation: &CancellationHandle,
+    cache_dir: &PathBuf, model_cache_only: bool, video_path: &PathBuf,
+    observer: &mut dyn TranscriptionProgressObserver, cancellation: &CancellationHandle,
 ) -> TranslationAttempt {
     let Some(source_language) = explicit_source_language.or(response.transcript.language.as_deref()) else {
         return TranslationAttempt::Failed("Native WhisperX did not report a source language".to_string());
@@ -434,7 +492,7 @@ fn translate_track(
         Ok(plan) => plan,
         Err(error) => return TranslationAttempt::Failed(error.to_string()),
     };
-    let mut provider = NativeOpusMtTranslationProvider::new(translation_config(cache_dir.clone()));
+    let mut provider = NativeOpusMtTranslationProvider::new(translation_config(cache_dir.clone(), model_cache_only));
     match translate_transcription_with_control(response, &plan, &mut provider, 0, video_path.clone(), observer, cancellation) {
         Ok(TranslatedTranscriptionOutcome::Completed(translated)) => {
             let pivoted = matches!(translated.provenance(), TranslationPlanProvenance::PivotTranslation { .. });
@@ -461,6 +519,7 @@ struct SseObserver {
     state: GenerationState,
     job_id: String,
     sender: broadcast::Sender<Job>,
+    alignment_attempted: bool,
 }
 
 impl SseObserver {
@@ -471,7 +530,12 @@ impl SseObserver {
 
 impl TranscriptionProgressObserver for SseObserver {
     fn observe(&mut self, event: TranscriptionProgressEvent) {
-        if let Some(phase) = phase_for_event(&event) { self.publish(phase); }
+        if let Some(phase) = phase_for_event(&event) {
+            if phase == JobPhase::Aligning {
+                self.alignment_attempted = true;
+            }
+            self.publish(phase);
+        }
     }
 }
 
@@ -491,16 +555,71 @@ mod tests {
     #[test]
     fn first_use_config_allows_downloads_and_shares_the_application_cache() {
         let root = PathBuf::from("unused-test-cache");
-        let config = native_config("video.mp4".into(), root.clone(), None);
+        let config = native_config("video.mp4".into(), root.clone(), None, false);
         assert_eq!(config.asr.model_dir.as_ref(), Some(&root));
         assert_eq!(config.alignment.model_dir.as_ref(), Some(&root));
         assert!(!config.asr.model_cache_only);
         assert!(!config.alignment.model_cache_only);
-        let translation = translation_config(root.clone());
+        let translation = translation_config(root.clone(), false);
         assert_eq!(translation.model_dir.as_ref(), Some(&root));
         assert!(!translation.model_cache_only);
         assert!(!config.diarization.enabled);
-        assert!(config.output.formats.is_empty());
+        assert!(config.output.output_dir.is_none());
+        let request = native_whisperx::build_transcription_request(&config)
+            .expect("application config must pass the real native validator without loading models");
+        assert_eq!(request.output.formats, vec!["json"]);
+    }
+
+    #[test]
+    fn cache_only_policy_applies_to_asr_alignment_and_translation() {
+        let root = PathBuf::from("existing-model-cache");
+        let config = native_config("video.mp4".into(), root.clone(), None, true);
+        let translation = translation_config(root, true);
+        assert!(config.asr.model_cache_only);
+        assert!(config.alignment.model_cache_only);
+        assert!(translation.model_cache_only);
+    }
+
+    #[test]
+    fn only_the_observed_ctc_impossible_alignment_failure_is_recoverable() {
+        assert!(recoverable_alignment_error(
+            "transcription failed: invalid argument: model_output_mismatch: CTC path is impossible"
+        ));
+        assert!(!recoverable_alignment_error(
+            "failed to resolve alignment model: cache-only=true"
+        ));
+        assert!(!recoverable_alignment_error("transcription model failed to load"));
+    }
+
+    #[test]
+    fn completion_message_keeps_the_alignment_degradation_visible() {
+        let message = completion_message("source subtitles generated", Some("CTC path is impossible"));
+        assert!(message.contains("source subtitles generated"));
+        assert!(message.contains("word alignment was skipped"));
+        assert!(message.contains("CTC path is impossible"));
+    }
+
+    #[test]
+    fn native_output_config_does_not_write_files_and_empty_formats_reproduce_the_old_failure() {
+        let mut config = native_config("video.mp4".into(), "unused-test-cache".into(), None, false);
+        let response = TranscriptionPipelineResponse {
+            accepted: true,
+            operation: "transcribe".into(),
+            provider: "native".into(),
+            model_id: "small".into(),
+            transcript: TranscriptionContract::new(Vec::new()),
+            vad_segments: Vec::new(),
+            alignment: None,
+            diarization: None,
+            artifacts: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        assert!(native_whisperx::write_outputs(&response, &config.output)
+            .expect("no output directory means no file writes").is_empty());
+        config.output.formats.clear();
+        assert!(native_whisperx::build_transcription_request(&config)
+            .expect_err("the previous application config rejected every job")
+            .to_string().contains("at least one output format is required"));
     }
 
     #[tokio::test]
@@ -549,6 +668,18 @@ mod tests {
             path: "captions.srt".into(), mime_type: "text/plain".into(), kind: RegisteredFileKind::Subtitle,
         }).ok().unwrap();
         assert!(registered_video_path(&app, &subtitle).is_err());
+    }
+
+    #[test]
+    fn missing_transcript_language_stays_unknown_instead_of_being_guessed() {
+        let mut segment = TranscriptSegmentContract::new(0, "Hello");
+        segment.start_seconds = Some(0.0);
+        segment.end_seconds = Some(1.0);
+        let transcript = TranscriptionContract::new(vec![segment]);
+
+        let track = track_from_transcript(&transcript, false);
+
+        assert_eq!(track.language, "und");
     }
 
     #[test]
