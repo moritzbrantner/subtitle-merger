@@ -258,9 +258,16 @@ test('edits subtitles directly in the video and scrubs the attached translation 
   await expect(timeline.getByTestId('subtitle-timeline-lane')).toHaveCount(2)
   await expect(page.getByRole('button', { name: 'Inspect', exact: true })).toHaveCount(0)
 
-  const cue = page
+  const initialCue = page
     .getByTestId('video-subtitle-cue')
     .filter({ hasText: 'Editable source subtitle' })
+  await expect(initialCue).toBeVisible()
+  // Re-locate by identity rather than text so the cue stays addressable after its text is edited.
+  const cueTrackId = await initialCue.getAttribute('data-track-id')
+  const cueIndex = await initialCue.getAttribute('data-cue-index')
+  const cue = page.locator(
+    `[data-testid="video-subtitle-cue"][data-track-id="${cueTrackId}"][data-cue-index="${cueIndex}"]`,
+  )
   await expect(cue).toBeVisible()
   const cueButton = cue.getByRole('button')
   await cueButton.click()
