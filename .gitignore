@@ -38,3 +38,6 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Next.js generated type references (next typegen / next build)
+/site/next-env.d.ts
