@@ -10,6 +10,7 @@
   "scripts": {
     "start": "bun scripts/start.mjs",
     "test:startup": "node --test scripts/runtime-tools.test.mjs",
+    "check:boundaries": "bun scripts/check-capability-boundary.mjs && bun test scripts/check-capability-boundary.test.mjs",
     "dev:backend": "cargo run --manifest-path backend/Cargo.toml",
     "dev:frontend": "bun run --cwd frontend dev",
     "dev:frontend:source": "bun run source:prepare && bun run --cwd frontend dev",
@@ -19,7 +20,8 @@
     "build:frontend": "bun run --cwd frontend build",
     "build:web-wasm": "node scripts/build-web-wasm.mjs",
     "build:site": "bun run build:web-wasm && bun run prepare:browser-transcription && bun run --cwd site build",
-    "check": "bun run test:startup && bun run --cwd frontend lint && bun run --cwd frontend test && bun run build:frontend && cargo check --manifest-path backend/Cargo.toml && cargo test --manifest-path backend/Cargo.toml && cargo test --manifest-path web-wasm/Cargo.toml --locked",
+    "check": "bun run check:boundaries && bun run test:startup && bun run --cwd frontend lint && bun run --cwd frontend test && bun run build:frontend && cargo check --manifest-path backend/Cargo.toml && cargo test --manifest-path backend/Cargo.toml && cargo test --manifest-path web-wasm/Cargo.toml --locked",
+    "source:checkouts": "node scripts/source-checkouts.mjs",
     "source:verify-graph": "bash scripts/source-deps verify-graph",
     "source:prepare": "bash scripts/source-deps prepare",
     "source:status": "bash scripts/source-deps status",

@@ -1,0 +1,47 @@
+schema_version = 1
+id = "moritzbrantner/subtitle-merger"
+kind = "app"
+status = "active"
+summary = "Subtitle/video editing product: subtitle track editing on a synchronized timeline, generation UX, export and the local app bootstrap, over transcription/translation consumed from Native WhisperX and the audio-analysis browser runtime."
+depends_on = ["moritzbrantner/native-whisperx", "moritzbrantner/audio-analysis", "moritzbrantner/timeline-editor", "moritzbrantner/editor-core"]
+consumed_by = []
+supersedes = []
+replaced_by = []
+
+# The editor owns the product workflow. ASR, alignment, translation and model runtimes are consumed
+# (docs/adr/0003-released-native-whisperx-boundary.md); scripts/check-capability-boundary.mjs rejects
+# direct dependencies on such implementations.
+[architecture]
+owns = [
+  "subtitle-merger/subtitle-editing",
+  "subtitle-merger/timeline-workflow",
+  "subtitle-merger/generation-ux",
+  "subtitle-merger/subtitle-export",
+  "subtitle-merger/local-app-bootstrap",
+]
+consumes = [
+  "native-whisperx/transcription",
+  "native-whisperx/alignment",
+  "native-whisperx/translation",
+  "audio-analysis/browser-transcription",
+  "timeline-editor/timeline-ui",
+  "editor-core/editor-model",
+]
+must_not_own = [
+  "native-whisperx/transcription",
+  "native-whisperx/alignment",
+  "native-whisperx/translation",
+  "audio-analysis/browser-transcription",
+  "media/model-runtime",
+]
+
+[bootstrap]
+command = ["sh", "-c", "bun install --frozen-lockfile && bun run source:checkouts"]
+check = ["sh", "-c", "bun run check:boundaries && bun run test:startup && bun run --cwd frontend test && bun run build:frontend"]
+timeout_seconds = 900
+
+[pages]
+status = "enabled"
+command = ["sh", "-c", "bun install --cwd site --frozen-lockfile && bun run build:site"]
+check = ["node", "scripts/check-pages.mjs"]
+timeout_seconds = 1800
