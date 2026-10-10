@@ -4,7 +4,7 @@
 // from a fresh clone. Existing checkouts must already be at the declared revision; they are never moved.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const config = JSON.parse(readFileSync(resolve(root, ".coding-tooling.source-deps.json"), "utf8"));
@@ -21,7 +21,7 @@ for (const repository of config.javascript?.repositories ?? []) {
   if (!url.startsWith("https://github.com/")) throw new Error(`${url}: only public https://github.com sources are materialized`);
   const target = resolve(root, localPath);
   const inside = relative(resolve(root, ".source"), target);
-  if (!inside || inside.startsWith("..") || resolve(root, ".source", inside) !== target) {
+  if (!inside || inside.startsWith("..") || isAbsolute(inside) || resolve(root, ".source", inside) !== target) {
     throw new Error(`${localPath}: source checkouts must live under .source/`);
   }
   // Lexical containment is not enough: a symlinked .source or ancestor could point elsewhere.
@@ -32,7 +32,7 @@ for (const repository of config.javascript?.repositories ?? []) {
   const realSource = existsSync(resolve(root, ".source")) ? realpathSync(resolve(root, ".source")) : resolve(realRoot, ".source");
   if (realSource !== resolve(realRoot, ".source")) throw new Error(".source must be a real directory inside the repository, not a symlink");
   const realInside = relative(realSource, realExisting);
-  if (realExisting !== realRoot && (realInside.startsWith("..") || realInside.startsWith("/"))) {
+  if (realExisting !== realRoot && (realInside.startsWith("..") || isAbsolute(realInside))) {
     throw new Error(`${localPath} resolves outside .source/ through a symlink`);
   }
   if (existsSync(target)) {
