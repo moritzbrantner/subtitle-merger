@@ -38,4 +38,10 @@ describe("capability boundary", () => {
       "site/package.json devDependencies onnxruntime-web",
     ]);
   });
+
+  test("rejects npm aliases of browser inference packages", () => {
+    expect(packageViolations("site/package.json", {
+      dependencies: { transformers: "npm:@huggingface/transformers@3", ui: "npm:@moritzbrantner/ui@1" },
+    })).toEqual(["site/package.json dependencies transformers (alias of @huggingface/transformers)"]);
+  });
 });

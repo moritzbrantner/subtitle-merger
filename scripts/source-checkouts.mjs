@@ -3,7 +3,7 @@
 // unauthenticated step makes `bun run source:prepare` and the clean-checkout repository contract work
 // from a fresh clone. Existing checkouts must already be at the declared revision; they are never moved.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -23,6 +23,17 @@ for (const repository of config.javascript?.repositories ?? []) {
   const inside = relative(resolve(root, ".source"), target);
   if (!inside || inside.startsWith("..") || resolve(root, ".source", inside) !== target) {
     throw new Error(`${localPath}: source checkouts must live under .source/`);
+  }
+  // Lexical containment is not enough: a symlinked .source or ancestor could point elsewhere.
+  let existing = target;
+  while (!existsSync(existing)) existing = dirname(existing);
+  const realRoot = realpathSync(root);
+  const realExisting = realpathSync(existing);
+  const realSource = existsSync(resolve(root, ".source")) ? realpathSync(resolve(root, ".source")) : resolve(realRoot, ".source");
+  if (realSource !== resolve(realRoot, ".source")) throw new Error(".source must be a real directory inside the repository, not a symlink");
+  const realInside = relative(realSource, realExisting);
+  if (realExisting !== realRoot && (realInside.startsWith("..") || realInside.startsWith("/"))) {
+    throw new Error(`${localPath} resolves outside .source/ through a symlink`);
   }
   if (existsSync(target)) {
     const head = git(["-C", target, "rev-parse", "HEAD"]);

@@ -68,9 +68,13 @@ export function cargoViolations(path, manifest) {
 export function packageViolations(path, manifest) {
   const violations = [];
   for (const field of PACKAGE_DEPENDENCY_FIELDS) {
-    for (const name of Object.keys(manifest[field] ?? {})) {
-      if (FORBIDDEN_PACKAGES.some((pattern) => pattern.test(name))) {
-        violations.push(`${path} ${field} ${name}`);
+    for (const [name, specifier] of Object.entries(manifest[field] ?? {})) {
+      // npm aliases ("alias": "npm:@scope/pkg@1") install the target under another name.
+      const alias = typeof specifier === "string" ? /^npm:((?:@[^/@]+\/)?[^@]+)/.exec(specifier) : null;
+      const target = alias?.[1];
+      const forbidden = (candidate) => FORBIDDEN_PACKAGES.some((pattern) => pattern.test(candidate));
+      if (forbidden(name) || (target && forbidden(target))) {
+        violations.push(`${path} ${field} ${name}${target && target !== name ? ` (alias of ${target})` : ""}`);
       }
     }
   }
