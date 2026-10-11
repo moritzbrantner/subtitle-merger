@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const webmFixturePath = fileURLToPath(new URL('./fixtures/acceptance-video.webm', import.meta.url))
@@ -327,4 +327,43 @@ test('edits subtitles directly in the video and scrubs the attached translation 
       fullPage: true,
     })
   }
+})
+
+test('exports the edited subtitle track in its source format', async ({ page }) => {
+  await prepareBrowserRuntime(page)
+  await page.goto('/')
+
+  const fileInputs = page.locator('input[type="file"]')
+  await fileInputs.nth(0).setInputFiles(webmFixturePath)
+  await fileInputs.nth(1).setInputFiles(englishSubtitleFixturePath)
+
+  const cue = page
+    .getByTestId('video-subtitle-cue')
+    .filter({ hasText: 'Editable source subtitle' })
+  await expect(cue).toBeVisible()
+  const cueTrackId = await cue.getAttribute('data-track-id')
+  const cueIndex = await cue.getAttribute('data-cue-index')
+  const editedCue = page.locator(
+    `[data-testid="video-subtitle-cue"][data-track-id="${cueTrackId}"][data-cue-index="${cueIndex}"]`,
+  )
+  await editedCue.getByRole('button').dblclick()
+  const textEditor = page.getByRole('textbox', { name: /Edit pages-editor\.en, cue 1/ })
+  await expect(textEditor).toBeVisible()
+  await textEditor.fill('Exported after a browser edit')
+  await textEditor.press('Control+Enter')
+  await expect(editedCue).toContainText('Exported after a browser edit')
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download source', exact: true }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('pages-editor.en.srt')
+  const path = await download.path()
+  const exported = (await readFile(path, 'utf8')).replace(/\r\n/g, '\n')
+
+  // The source format (SRT) carries the edit with the original cue number and timing.
+  expect(exported).toMatch(
+    /^\uFEFF?1\n00:00:00,000 --> 00:00:01,800\nExported after a browser edit(\n|$)/,
+  )
+  expect(exported).not.toContain('Editable source subtitle')
+  expect(exported).not.toContain('WEBVTT')
 })
