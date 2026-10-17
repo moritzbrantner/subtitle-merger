@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@moritzbrantner/ui": "^1.1.0",
-    "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#716eb6b5c4a66a18c57e5d0507fdfdcd3a3a89f5",
+    "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#e80d19ab0fc9599cbd911354d6c78ed578c3757c",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
