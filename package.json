@@ -39,7 +39,7 @@
     "prepare:browser-transcription": "node scripts/prepare-browser-transcription.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "1.64.1"
   },
   "overrides": {
     "@moritzbrantner/ui": "1.1.0"
