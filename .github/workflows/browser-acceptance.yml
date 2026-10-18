@@ -17,21 +17,21 @@ jobs:
       EDITOR_CORE_SOURCE: ${{ github.workspace }}/.source/editor-core
       TIMELINE_EDITOR_SOURCE: ${{ github.workspace }}/.source/timeline-editor
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Check out coding-tooling source dependency runtime
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: moritzbrantner/coding-tooling
           ref: c67d5b11de0576f96d484db5ac8060cc1655a007
           path: .source/coding-tooling
       - name: Check out editor-core source
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: moritzbrantner/editor-core
           ref: 1a52e27ddacc5daa8b39713e9de8edd1c498c640
           path: .source/editor-core
       - name: Check out timeline-editor source
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: moritzbrantner/timeline-editor
           ref: 716eb6b5c4a66a18c57e5d0507fdfdcd3a3a89f5
