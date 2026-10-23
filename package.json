@@ -43,5 +43,8 @@
   },
   "overrides": {
     "@moritzbrantner/ui": "1.1.0"
-  }
+  },
+  "trustedDependencies": [
+    "@moenarch/editor-core"
+  ]
 }
