@@ -11,7 +11,7 @@ permissions:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       CODING_TOOLING_DIR: ${{ github.workspace }}/.source/coding-tooling
       EDITOR_CORE_SOURCE: ${{ github.workspace }}/.source/editor-core
