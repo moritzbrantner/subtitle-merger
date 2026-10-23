@@ -4,7 +4,7 @@ Rust backend and React + TypeScript editor for loading video/subtitle siblings, 
 
 ## Start the local application
 
-From a checkout, with **Bun 1.3.14, Git, Rust/Cargo and the platform's native build toolchain** installed:
+From a checkout, with **the latest Bun, Git, Rust/Cargo and the platform's native build toolchain** installed:
 
 ```sh
 bun start
