@@ -49,14 +49,15 @@ jobs:
         run: bun run source:prepare
       - name: Smoke-test editor-family source
         run: bun run source:smoke
-      - name: Install FFmpeg
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
+      # Cached, time-boxed apt (skips image-provided packages) instead of a bare apt-get that
+      # can stall on azure.archive.ubuntu.com.
+      - name: Install FFmpeg and Chromium system dependencies
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@a30c972a594d044c23951b1b6fb6e88e14b914e5 # main
+        with:
+          packages: ffmpeg
+          playwright_browsers: chromium
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
       - name: Install Pages dependencies
         working-directory: site
         run: bun install --frozen-lockfile
