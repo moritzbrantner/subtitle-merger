@@ -12,8 +12,8 @@
       "name": "frontend",
       "version": "0.1.0",
       "dependencies": {
-        "@moenarch/editor-core": "github:moritzbrantner/editor-core#12de038073818cbdd08c23665643e629f721ff26",
-        "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#80c53cc256c7d8a130c89ca63971c43798f5fb0d",
+        "@moenarch/editor-core": "github:moritzbrantner/editor-core#3a24d4db70bec76935e2579f2c04d6089fb68a19",
+        "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#ae0ce34e4dcf3b5daeadc070b316dd39293013d0",
         "@moritzbrantner/ui": "^1.1.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -64,9 +64,9 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@moenarch/editor-core": ["@moenarch/editor-core@github:moritzbrantner/editor-core#12de038", { "peerDependencies": { "react": "^19.0.0" }, "optionalPeers": ["react"] }, "moritzbrantner-editor-core-12de038", "sha512-3o7hfTgBL/AHPwIffwC4RZBymzE9URwZaQM67SPmDFuobBovsU1eMCun3iz0/iExj13I9WlZrvi6TVS+Miffrw=="],
+    "@moenarch/editor-core": ["@moenarch/editor-core@github:moritzbrantner/editor-core#3a24d4d", { "peerDependencies": { "react": "^19.0.0" }, "optionalPeers": ["react"], "hasInstallScript": true }, "moritzbrantner-editor-core-3a24d4d", "sha512-U++cW4quFJFC5e7TNQu2I+TrDS2NhiRwUVDgsRWfME574G/7kXbKV4kuwQtb7EHgzAbBPJ3uoxLwVopUrernmQ=="],
 
-    "@moritzbrantner/timeline-editor": ["@moritzbrantner/timeline-editor@github:moritzbrantner/timeline-editor#80c53cc", { "dependencies": { "@moenarch/editor-core": "git+https://github.com/moritzbrantner/editor-core.git#12de038073818cbdd08c23665643e629f721ff26", "@moritzbrantner/ui": "git+https://github.com/moritzbrantner/ui.git#d7148b393a8ab3676824fa2f5d2745c28b8ea45f" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "moritzbrantner-timeline-editor-80c53cc", "sha512-mmDotX1bwEVngiWGf6zXL6hRqv3cw/C++QzLcg48UjrQ7KNp55IDoBhyod6Ue1gmzlCZUg/wOWO56W8wjnPcnQ=="],
+    "@moritzbrantner/timeline-editor": ["@moritzbrantner/timeline-editor@github:moritzbrantner/timeline-editor#ae0ce34", { "dependencies": { "@moenarch/editor-core": "git+https://github.com/moritzbrantner/editor-core.git#3a24d4db70bec76935e2579f2c04d6089fb68a19", "@moritzbrantner/ui": "git+https://github.com/moritzbrantner/ui.git#5abb78e3d012485f24f51f38612145f3c896df05" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" }, "hasInstallScript": true }, "moritzbrantner-timeline-editor-ae0ce34", "sha512-H1F3DzHlg/XS/FucrvRihd561wEBaL/sDypQgyMzVGq/OknEDfSW3FB8ZDYMyjivMljgOWHHNqM4ZKR8mzUqxQ=="],
 
     "@moritzbrantner/ui": ["@moritzbrantner/ui@1.1.0", "", { "dependencies": { "@base-ui/react": "^1.3.0", "@tanstack/react-table": "^8.21.3", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cmdk": "^1.1.1", "date-fns": "^4.1.0", "embla-carousel-react": "^8.6.0", "input-otp": "^1.4.2", "lucide-react": "^1.7.0", "radix-ui": "^1.4.3", "react-day-picker": "^9.14.0", "react-resizable-panels": "^4.9.0", "sonner": "^2.0.7", "tailwind-merge": "^3.4.0", "tailwindcss": "^4.1.14", "tw-animate-css": "^1.4.0", "vaul": "^1.1.2" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-y0SoUpQks5Fg77PiyFyis+bgw2+HaOL07ALFqLVwsay1ZSEmwSX+jbdjwgjMNfsVCvKL8tooHsZXDx1u1q214Q=="],
 
