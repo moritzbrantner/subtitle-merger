@@ -52,7 +52,7 @@ jobs:
       # Cached, time-boxed apt (skips image-provided packages) instead of a bare apt-get that
       # can stall on azure.archive.ubuntu.com.
       - name: Install FFmpeg and Chromium system dependencies
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@c50095269318d374df42a86de08c3bf236f2e01f # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@6018f82b251c755e1e78c3044e61f88425e0ea8b # main
         with:
           packages: ffmpeg
           playwright_browsers: chromium
