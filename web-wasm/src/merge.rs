@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::{push_json_string, return_json};
 
 const MAX_TRACKS: u32 = 64;
@@ -142,6 +144,59 @@ fn shifted_cues(track: &MergeTrack) -> Vec<MergeCue> {
         .collect()
 }
 
+/// Tracks which of one track's cues cover the current window. Windows are bounded by
+/// consecutive cue boundaries, so a cue never starts or ends strictly inside one.
+struct TrackSweep<'a> {
+    cues: &'a [MergeCue],
+    by_start: Vec<usize>,
+    by_end: Vec<usize>,
+    next_start: usize,
+    next_end: usize,
+    /// Indexes of active cues; ordered so overlapping text stays in source cue order.
+    active: BTreeSet<usize>,
+}
+
+impl<'a> TrackSweep<'a> {
+    fn new(cues: &'a [MergeCue]) -> Self {
+        let mut by_start: Vec<usize> = (0..cues.len()).collect();
+        by_start.sort_unstable_by_key(|&index| cues[index].start_ms);
+        let mut by_end: Vec<usize> = (0..cues.len()).collect();
+        by_end.sort_unstable_by_key(|&index| cues[index].end_ms);
+        Self {
+            cues,
+            by_start,
+            by_end,
+            next_start: 0,
+            next_end: 0,
+            active: BTreeSet::new(),
+        }
+    }
+
+    fn advance_to(&mut self, start_ms: u64) {
+        while let Some(&index) = self.by_start.get(self.next_start) {
+            if self.cues[index].start_ms > start_ms {
+                break;
+            }
+            self.active.insert(index);
+            self.next_start += 1;
+        }
+        while let Some(&index) = self.by_end.get(self.next_end) {
+            if self.cues[index].end_ms > start_ms {
+                break;
+            }
+            self.active.remove(&index);
+            self.next_end += 1;
+        }
+    }
+
+    fn active_texts(&self) -> impl Iterator<Item = &'a str> + '_ {
+        let cues = self.cues;
+        self.active
+            .iter()
+            .map(move |&index| cues[index].text.trim())
+    }
+}
+
 fn flatten_tracks(tracks: &[MergeTrack]) -> Vec<FlatCue> {
     let shifted: Vec<Vec<MergeCue>> = tracks.iter().map(shifted_cues).collect();
     let mut boundaries = Vec::new();
@@ -154,6 +209,7 @@ fn flatten_tracks(tracks: &[MergeTrack]) -> Vec<FlatCue> {
     boundaries.sort_unstable();
     boundaries.dedup();
 
+    let mut sweeps: Vec<TrackSweep> = shifted.iter().map(|cues| TrackSweep::new(cues)).collect();
     let mut output: Vec<FlatCue> = Vec::new();
     for window in boundaries.windows(2) {
         let start_ms = window[0];
@@ -162,13 +218,9 @@ fn flatten_tracks(tracks: &[MergeTrack]) -> Vec<FlatCue> {
             continue;
         }
         let mut track_texts = Vec::new();
-        for cues in &shifted {
-            let active: Vec<&str> = cues
-                .iter()
-                .filter(|cue| cue.start_ms < end_ms && cue.end_ms > start_ms)
-                .map(|cue| cue.text.trim())
-                .filter(|text| !text.is_empty())
-                .collect();
+        for sweep in &mut sweeps {
+            sweep.advance_to(start_ms);
+            let active: Vec<&str> = sweep.active_texts().collect();
             if !active.is_empty() {
                 track_texts.push(active.join("\n"));
             }
@@ -402,6 +454,81 @@ mod tests {
         let vtt = serialize_webvtt(&tracks);
         assert!(srt.contains("Alpha\nBeta"));
         assert!(vtt.contains("Alpha\nBeta"));
+    }
+
+    /// The direct definition of a flattened window: every cue overlapping it, per track.
+    fn flatten_by_scanning_every_cue(tracks: &[MergeTrack]) -> Vec<FlatCue> {
+        let shifted: Vec<Vec<MergeCue>> = tracks.iter().map(shifted_cues).collect();
+        let mut boundaries: Vec<u64> = shifted
+            .iter()
+            .flatten()
+            .flat_map(|cue| [cue.start_ms, cue.end_ms])
+            .collect();
+        boundaries.sort_unstable();
+        boundaries.dedup();
+
+        let mut output: Vec<FlatCue> = Vec::new();
+        for window in boundaries.windows(2) {
+            let (start_ms, end_ms) = (window[0], window[1]);
+            let mut track_texts = Vec::new();
+            for cues in &shifted {
+                let active: Vec<&str> = cues
+                    .iter()
+                    .filter(|cue| cue.start_ms < end_ms && cue.end_ms > start_ms)
+                    .map(|cue| cue.text.trim())
+                    .filter(|text| !text.is_empty())
+                    .collect();
+                if !active.is_empty() {
+                    track_texts.push(active.join("\n"));
+                }
+            }
+            if track_texts.is_empty() {
+                continue;
+            }
+            let text = track_texts.join("\n");
+            if let Some(last) = output.last_mut() {
+                if last.end_ms == start_ms && last.text == text {
+                    last.end_ms = end_ms;
+                    continue;
+                }
+            }
+            output.push(FlatCue { start_ms, end_ms, text });
+        }
+        output
+    }
+
+    #[test]
+    fn sweep_matches_scanning_every_cue_for_unordered_overlapping_tracks() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |bound: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % bound
+        };
+        for _ in 0..300 {
+            let tracks: Vec<MergeTrack> = (0..=next(4))
+                .map(|track_index| MergeTrack {
+                    title: format!("T{track_index}"),
+                    offset_ms: next(400) as i64 - 200,
+                    cues: (0..next(30))
+                        .map(|_| {
+                            let start_ms = next(300);
+                            MergeCue {
+                                start_ms,
+                                end_ms: start_ms + next(60),
+                                text: match next(6) {
+                                    0 => "  ".into(),
+                                    1 => " same ".into(),
+                                    other => format!("t{track_index}c{other}"),
+                                },
+                            }
+                        })
+                        .collect(),
+                })
+                .collect();
+            assert_eq!(flatten_tracks(&tracks), flatten_by_scanning_every_cue(&tracks));
+        }
     }
 
     #[test]

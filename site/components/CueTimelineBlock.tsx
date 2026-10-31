@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -15,20 +16,26 @@ import {
   type CueTiming,
   type TimelineCueEditMode,
 } from "../lib/timeline-edit";
-import type { Cue } from "../lib/types";
+import type { Cue, Track } from "../lib/types";
+import { shiftedTime } from "../lib/workbench";
 
 type Props = {
+  track: Track;
   cue: Cue;
   cueIndex: number;
-  trackTitle: string;
-  trackOffsetMs: number;
   timelineDurationMs: number;
   editable: boolean;
   selected: boolean;
   busy: boolean;
-  onSelect: () => void;
+  onSelect: (trackId: string, cueIndex: number) => void;
   onSeek: (milliseconds: number) => void;
-  onCommitTiming: (startMs: number, endMs: number) => Promise<boolean>;
+  onCommitTiming: (
+    track: Track,
+    cueIndex: number,
+    cue: Cue,
+    startMs: number,
+    endMs: number,
+  ) => Promise<boolean>;
 };
 
 type Gesture = {
@@ -39,15 +46,10 @@ type Gesture = {
   timing: CueTiming;
 };
 
-function shiftedTime(milliseconds: number, offsetMs: number) {
-  return Math.max(0, milliseconds + offsetMs);
-}
-
-export function CueTimelineBlock({
+export const CueTimelineBlock = memo(function CueTimelineBlock({
+  track,
   cue,
   cueIndex,
-  trackTitle,
-  trackOffsetMs,
   timelineDurationMs,
   editable,
   selected,
@@ -56,6 +58,7 @@ export function CueTimelineBlock({
   onSeek,
   onCommitTiming,
 }: Props) {
+  const { title: trackTitle, offsetMs: trackOffsetMs } = track;
   const shellRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<Gesture | undefined>(undefined);
   const previewRef = useRef<CueTiming | undefined>(undefined);
@@ -81,7 +84,7 @@ export function CueTimelineBlock({
 
   function startGesture(event: PointerEvent<HTMLButtonElement>, mode: TimelineCueEditMode) {
     event.stopPropagation();
-    onSelect();
+    onSelect(track.id, cueIndex);
     if (!canEdit) {
       return;
     }
@@ -140,7 +143,7 @@ export function CueTimelineBlock({
     }
     setCommitting(true);
     try {
-      await onCommitTiming(next.startMs, next.endMs);
+      await onCommitTiming(track, cueIndex, cue, next.startMs, next.endMs);
     } finally {
       setPreviewTiming(undefined);
       setCommitting(false);
@@ -191,7 +194,7 @@ export function CueTimelineBlock({
       event.preventDefault();
       return;
     }
-    onSelect();
+    onSelect(track.id, cueIndex);
     onSeek(adjustedStartMs);
   }
 
@@ -246,4 +249,4 @@ export function CueTimelineBlock({
       ) : null}
     </div>
   );
-}
+});
