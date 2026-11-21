@@ -39,7 +39,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
@@ -52,7 +52,7 @@ jobs:
       # Cached, time-boxed apt (skips image-provided packages) instead of a bare apt-get that
       # can stall on azure.archive.ubuntu.com.
       - name: Install FFmpeg and Chromium system dependencies
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@ce950447a1e0cbed601dc6d7b3e42fa0e53ab3c6 # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@17987ed0bfd274f75bce1923f857782824efab9c # main
         with:
           packages: ffmpeg
           playwright_browsers: chromium
