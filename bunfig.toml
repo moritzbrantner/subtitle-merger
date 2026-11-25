@@ -1,0 +1,7 @@
+[install]
+# Subtitle Merger relies on a hoisted root node_modules: frontend/vite.config.ts
+# aliases ../node_modules/@moritzbrantner/timeline-editor/src, and
+# scripts/source-deps bridges sibling checkouts into the root node_modules and
+# smoke-imports them from the repository root. Bun defaults workspaces to the
+# isolated linker once bun.lock reaches configVersion 1, so pin it explicitly.
+linker = "hoisted"
