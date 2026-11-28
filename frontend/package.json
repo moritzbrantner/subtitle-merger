@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@moenarch/editor-core": "github:moritzbrantner/editor-core#e238e171c27e7dafb7db085430a19ebf67f8fb1b",
-    "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#c0ba59d566b66ba5fba7039bc593f022b1d8efa6",
+    "@moenarch/editor-core": "github:moritzbrantner/editor-core#25e6636d92c01872d21fab6cf86887062398a569",
+    "@moritzbrantner/timeline-editor": "github:moritzbrantner/timeline-editor#5345b2bc7014c8f47cbe35280f17138608ac2a65",
     "@moritzbrantner/ui": "^1.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
